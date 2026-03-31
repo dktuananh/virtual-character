@@ -1,0 +1,8 @@
+{
+  "name": "Virtual Character",
+  "description": "A high-end digital studio for creating and chatting with virtual AI personas featuring streaming responses and emotional expressions.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
