@@ -16,6 +16,7 @@ export interface Character {
   avatarUrl: string;
   version: string;
   status: 'Operational' | 'Learning' | 'Standby';
+  createdAt?: number;
 }
 
 export interface Message {

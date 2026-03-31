@@ -4,7 +4,7 @@ import { Character, Message, AIConfig } from "../types";
 
 export async function* streamChat(character: Character, history: Message[], userMessage: string, config: AIConfig) {
   if (!config.apiKey) {
-    throw new Error("API Key is missing. Please configure it in your Profile.");
+    throw new Error("API Key is missing. Please configure it in your Settings.");
   }
 
   const systemInstruction = `You are ${character.name}. 
@@ -23,12 +23,24 @@ Example:
 
 Keep the emotion/action part descriptive and relevant to your character's personality.
 Separate the emotion/action from the main text.
-Speak naturally as the character.`;
+Speak naturally, expressively, and stay in character at all times. Be concise but impactful.`;
 
   if (config.provider === 'google') {
     const ai = new GoogleGenAI({ apiKey: config.apiKey });
+    let modelName = config.modelId || "gemini-3-flash-preview";
+    if (!modelName.startsWith('models/')) {
+      modelName = `models/${modelName}`;
+    }
+    
+    // Limit history to last 20 messages for better context
+    const recentHistory = history.slice(-20).map(m => ({
+      role: m.role === 'model' ? 'model' : 'user' as any,
+      parts: [{ text: m.content }]
+    }));
+
     const chat = ai.chats.create({
-      model: config.modelId || "gemini-3-flash-preview",
+      model: modelName,
+      history: recentHistory,
       config: {
         systemInstruction,
       }
@@ -44,12 +56,15 @@ Speak naturally as the character.`;
       dangerouslyAllowBrowser: true 
     });
 
+    // Limit history to last 20 messages
+    const recentHistory = history.slice(-20).map(m => ({
+      role: m.role === 'model' ? 'assistant' : 'user' as any,
+      content: m.content
+    }));
+
     const messages: any[] = [
       { role: 'system', content: systemInstruction },
-      ...history.map(m => ({
-        role: m.role === 'model' ? 'assistant' : 'user',
-        content: m.content
-      })),
+      ...recentHistory,
       { role: 'user', content: userMessage }
     ];
 
