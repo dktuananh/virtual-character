@@ -326,8 +326,8 @@ export default function App() {
         <div className={cn("p-6 flex items-center", isSidebarCollapsed ? "justify-center" : "justify-between")}>
           {!isSidebarCollapsed && (
             <div>
-              <h1 className="text-xl font-black tracking-tighter text-primary uppercase font-headline text-nowrap">The Muse</h1>
-              <p className="text-[8px] text-on-surface-variant tracking-widest mt-0.5 opacity-60">NEON ATELIER</p>
+              <h1 className="text-xl font-black tracking-tighter text-primary uppercase font-headline text-nowrap">Virtual Character</h1>
+              <p className="text-[8px] text-on-surface-variant tracking-widest mt-0.5 opacity-60">AI PERSONA STUDIO</p>
             </div>
           )}
           <div className="flex items-center gap-2">
