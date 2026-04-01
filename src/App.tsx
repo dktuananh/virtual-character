@@ -95,7 +95,7 @@ const INITIAL_CHARACTERS: Character[] = [
 const DEFAULT_AI_CONFIG: AIConfig = {
   provider: 'google',
   modelId: 'gemini-3-flash-preview',
-  apiKey: ''
+  apiKey: process.env.GEMINI_API_KEY || ''
 };
 
 export default function App() {
@@ -1229,9 +1229,29 @@ function ChatView({
                       ? "bg-gradient-to-br from-primary to-primary-dim text-background rounded-tr-none font-medium" 
                       : "bg-surface-container-highest text-on-surface rounded-tl-none border border-white/5"
                   )}>
-                    <div className="markdown-body">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
-                    </div>
+                    {msg.role === 'model' && msg.content === '' && isStreaming && index === history.length - 1 ? (
+                      <div className="flex gap-1 items-center py-1">
+                        <motion.div 
+                          animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
+                          transition={{ repeat: Infinity, duration: 1, delay: 0 }}
+                          className="w-1.5 h-1.5 bg-primary rounded-full" 
+                        />
+                        <motion.div 
+                          animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
+                          transition={{ repeat: Infinity, duration: 1, delay: 0.2 }}
+                          className="w-1.5 h-1.5 bg-primary rounded-full" 
+                        />
+                        <motion.div 
+                          animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
+                          transition={{ repeat: Infinity, duration: 1, delay: 0.4 }}
+                          className="w-1.5 h-1.5 bg-primary rounded-full" 
+                        />
+                      </div>
+                    ) : (
+                      <div className="markdown-body">
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
