@@ -294,10 +294,11 @@ export default function App() {
   const startChat = (char: Character) => {
     setActiveCharacter(char);
     setView('chat');
+    setIsSidebarOpen(false);
   };
 
   return (
-    <div className="flex h-screen bg-background text-on-surface overflow-hidden">
+    <div className="flex h-screen h-[100dvh] bg-background text-on-surface overflow-hidden">
       {/* Sidebar Overlay for Mobile */}
       <AnimatePresence>
         {isSidebarOpen && (
@@ -364,7 +365,7 @@ export default function App() {
             icon={<LayoutDashboard size={20} />} 
             label={t('common.dashboard')} 
             active={view === 'dashboard'} 
-            onClick={() => setView('dashboard')} 
+            onClick={() => { setView('dashboard'); setIsSidebarOpen(false); }} 
             collapsed={isSidebarCollapsed}
           />
           
@@ -391,7 +392,7 @@ export default function App() {
             icon={<Settings size={20} />} 
             label={t('common.settings')} 
             active={view === 'settings'} 
-            onClick={() => setView('settings')} 
+            onClick={() => { setView('settings'); setIsSidebarOpen(false); }} 
             collapsed={isSidebarCollapsed}
           />
         </div>
@@ -400,7 +401,7 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
         {/* Header */}
-        <header className="h-16 border-b border-outline-variant/10 bg-background/80 backdrop-blur-xl flex items-center justify-between px-6 z-40">
+        <header className="h-16 flex-shrink-0 border-b border-outline-variant/10 bg-background/80 backdrop-blur-xl flex items-center justify-between px-6 z-40">
           <div className="flex items-center gap-4">
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -1179,7 +1180,7 @@ function ChatView({
 
   return (
     <div className="flex flex-col h-full relative overflow-hidden">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar space-y-8 px-4 py-8">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar space-y-6 sm:space-y-8 px-3 sm:px-4 py-4 sm:py-8">
         <div className="max-w-4xl mx-auto w-full">
           {history.length === 0 && !error && (
             <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center opacity-40">
@@ -1239,9 +1240,9 @@ function ChatView({
         </div>
       </div>
 
-      <div className="p-4 sm:p-6 bg-background/80 backdrop-blur-md border-t border-outline-variant/10">
+      <div className="p-3 sm:p-6 bg-background/80 backdrop-blur-md border-t border-outline-variant/10">
         <div className="max-w-4xl mx-auto relative">
-          <div className="flex items-end gap-2 sm:gap-3 bg-surface-container-highest p-1.5 sm:p-2 rounded-2xl shadow-xl ring-1 ring-white/5 focus-within:ring-primary/40 transition-all relative">
+          <div className="flex items-end gap-1.5 sm:gap-3 bg-surface-container-highest p-1 sm:p-2 rounded-2xl shadow-xl ring-1 ring-white/5 focus-within:ring-primary/40 transition-all relative">
             <div className="relative">
               <button 
                 onClick={() => setShowEmoji(!showEmoji)}
@@ -1276,14 +1277,15 @@ function ChatView({
             </div>
             
             <textarea 
-              className="flex-1 bg-transparent border-none text-on-surface placeholder:text-on-surface-variant/50 focus:ring-0 text-sm font-medium py-2 resize-none max-h-48 min-h-[40px] custom-scrollbar" 
+              className="flex-1 bg-transparent border-none text-on-surface placeholder:text-on-surface-variant/50 focus:ring-0 text-sm font-medium py-2 resize-none max-h-32 sm:max-h-48 min-h-[40px] custom-scrollbar" 
               placeholder={t('common.speak_with', { name: character.name })}
               value={input}
               rows={1}
               onChange={e => {
                 setInput(e.target.value);
                 e.target.style.height = 'auto';
-                e.target.style.height = `${Math.min(e.target.scrollHeight, 192)}px`;
+                const maxHeight = window.innerWidth < 640 ? 128 : 192;
+                e.target.style.height = `${Math.min(e.target.scrollHeight, maxHeight)}px`;
               }}
               onKeyDown={e => {
                 if (e.key === 'Enter' && !e.shiftKey) {

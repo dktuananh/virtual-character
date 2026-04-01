@@ -66,6 +66,12 @@
 }
 
 @layer base {
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+  }
   body {
     @apply bg-background text-on-surface font-sans antialiased transition-colors duration-300;
   }

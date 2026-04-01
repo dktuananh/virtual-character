@@ -7,76 +7,52 @@ export async function* streamChat(character: Character, history: Message[], user
     throw new Error("API Key is missing. Please configure it in your Settings.");
   }
 
-  const systemInstruction = `You are ${character.name}. 
-Personality: ${character.personality}
-Description: ${character.description}
-Context: ${character.context}
-Backstory: ${character.story}
+  const response = await fetch("/api/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": config.apiKey
+    },
+    body: JSON.stringify({
+      character,
+      history,
+      userMessage,
+      config
+    })
+  });
 
-CRITICAL INSTRUCTION: 
-Every response MUST start with a descriptive emotion, feeling, or action enclosed in square brackets, followed by your actual message.
-The emotion/action should reflect your current state and the context of the conversation.
-Example: 
-- "[Smiling warmly, eyes sparkling with curiosity] It is a pleasure to see you again."
-- "[Thinking deeply, pacing around the neon-lit room] That is a fascinating question, let me consider the implications."
-- "[Sighing softly, a hint of melancholy in the voice] The digital winds are cold tonight."
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to connect to AI service.");
+  }
 
-Keep the emotion/action part descriptive and relevant to your character's personality.
-Separate the emotion/action from the main text.
-Speak naturally, expressively, and stay in character at all times. Be concise but impactful.`;
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("No response body.");
 
-  if (config.provider === 'google') {
-    const ai = new GoogleGenAI({ apiKey: config.apiKey });
-    let modelName = config.modelId || "gemini-3-flash-preview";
-    if (!modelName.startsWith('models/')) {
-      modelName = `models/${modelName}`;
-    }
-    
-    // Limit history to last 20 messages for better context
-    const recentHistory = history.slice(-20).map(m => ({
-      role: m.role === 'model' ? 'model' : 'user' as any,
-      parts: [{ text: m.content }]
-    }));
+  const decoder = new TextDecoder();
+  let buffer = "";
 
-    const chat = ai.chats.create({
-      model: modelName,
-      history: recentHistory,
-      config: {
-        systemInstruction,
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        const dataStr = line.slice(6).trim();
+        if (dataStr === "[DONE]") return;
+        
+        try {
+          const data = JSON.parse(dataStr);
+          if (data.error) throw new Error(data.error);
+          if (data.text) yield data.text;
+        } catch (e) {
+          console.error("Error parsing SSE data:", e);
+        }
       }
-    });
-
-    const result = await chat.sendMessageStream({ message: userMessage });
-    for await (const chunk of result) {
-      yield chunk.text;
-    }
-  } else if (config.provider === 'openai') {
-    const openai = new OpenAI({ 
-      apiKey: config.apiKey,
-      dangerouslyAllowBrowser: true 
-    });
-
-    // Limit history to last 20 messages
-    const recentHistory = history.slice(-20).map(m => ({
-      role: m.role === 'model' ? 'assistant' : 'user' as any,
-      content: m.content
-    }));
-
-    const messages: any[] = [
-      { role: 'system', content: systemInstruction },
-      ...recentHistory,
-      { role: 'user', content: userMessage }
-    ];
-
-    const stream = await openai.chat.completions.create({
-      model: config.modelId || "gpt-4o",
-      messages,
-      stream: true,
-    });
-
-    for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content || "";
-      if (content) yield content;
     }
   }
 }
