@@ -115,13 +115,23 @@ export default function App() {
     return INITIAL_CHARACTERS;
   });
   const [aiConfig, setAiConfig] = useState<AIConfig>(() => {
-    const saved = localStorage.getItem('muse_ai_config');
-    return saved ? JSON.parse(saved) : DEFAULT_AI_CONFIG;
+    try {
+      const saved = localStorage.getItem('muse_ai_config');
+      return saved ? JSON.parse(saved) : DEFAULT_AI_CONFIG;
+    } catch (e) {
+      console.error("Failed to parse AI config from localStorage", e);
+      return DEFAULT_AI_CONFIG;
+    }
   });
   const [activeCharacter, setActiveCharacter] = useState<Character | null>(null);
   const [chatHistory, setChatHistory] = useState<Record<string, Message[]>>(() => {
-    const saved = localStorage.getItem('muse_chat_history');
-    return saved ? JSON.parse(saved) : {};
+    try {
+      const saved = localStorage.getItem('muse_chat_history');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      console.error("Failed to parse chat history from localStorage", e);
+      return {};
+    }
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -298,7 +308,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen h-[100dvh] bg-background text-on-surface overflow-hidden">
+    <div className="fixed inset-0 flex bg-background text-on-surface overflow-hidden overscroll-none">
       {/* Sidebar Overlay for Mobile */}
       <AnimatePresence>
         {isSidebarOpen && (
@@ -713,6 +723,7 @@ export default function App() {
 
             {view === 'chat' && activeCharacter && (
               <ChatView 
+                key={`chat-${activeCharacter.id}`}
                 character={activeCharacter} 
                 history={chatHistory[activeCharacter.id] || []} 
                 onUpdateHistory={(newHistory) => setChatHistory(prev => ({ ...prev, [activeCharacter.id]: newHistory }))}
@@ -1179,7 +1190,7 @@ function ChatView({
   };
 
   return (
-    <div className="flex flex-col h-full relative overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 relative overflow-hidden">
       <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar space-y-6 sm:space-y-8 px-3 sm:px-4 py-4 sm:py-8">
         <div className="max-w-4xl mx-auto w-full">
           {history.length === 0 && !error && (
@@ -1260,7 +1271,7 @@ function ChatView({
         </div>
       </div>
 
-      <div className="p-3 sm:p-6 bg-background/80 backdrop-blur-md border-t border-outline-variant/10">
+      <div className="p-3 sm:p-6 bg-background/80 backdrop-blur-md border-t border-outline-variant/10 flex-shrink-0 pb-[env(safe-area-inset-bottom)] z-10">
         <div className="max-w-4xl mx-auto relative">
           <div className="flex items-end gap-1.5 sm:gap-3 bg-surface-container-highest p-1 sm:p-2 rounded-2xl shadow-xl ring-1 ring-white/5 focus-within:ring-primary/40 transition-all relative">
             <div className="relative">
