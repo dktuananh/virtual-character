@@ -26,7 +26,8 @@ import {
   Smile,
   Menu,
   X,
-  Languages
+  Languages,
+  WifiOff
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
@@ -142,6 +143,21 @@ export default function App() {
     return localStorage.getItem('muse_user_avatar') || 'https://picsum.photos/seed/user/100/100';
   });
   const [isSelectingCharacter, setIsSelectingCharacter] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -309,6 +325,21 @@ export default function App() {
 
   return (
     <div className="fixed inset-0 flex bg-background text-on-surface overflow-hidden overscroll-none">
+      {/* Offline Indicator */}
+      <AnimatePresence>
+        {!isOnline && (
+          <motion.div 
+            initial={{ y: -50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -50, opacity: 0 }}
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-destructive text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 text-xs font-bold"
+          >
+            <WifiOff size={14} />
+            {t('common.offline_mode') || 'Offline Mode - AI requires internet'}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Sidebar Overlay for Mobile */}
       <AnimatePresence>
         {isSidebarOpen && (
@@ -1202,9 +1233,27 @@ function ChatView({
           )}
 
           {error && (
-            <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-2xl text-destructive text-sm flex items-center gap-3 animate-in fade-in zoom-in duration-300">
-              <Bell size={18} />
-              <p className="font-medium">{error}</p>
+            <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-2xl text-destructive text-sm flex flex-col sm:flex-row items-center justify-between gap-4 animate-in fade-in zoom-in duration-300">
+              <div className="flex items-center gap-3">
+                <Bell size={18} className="flex-shrink-0" />
+                <p className="font-medium">{error}</p>
+              </div>
+              <button 
+                onClick={() => {
+                  // Re-send the last user message
+                  const lastUserMsg = history.filter(m => m.role === 'user').pop();
+                  if (lastUserMsg) {
+                    setInput(lastUserMsg.content);
+                    // We need to remove the last user message from history so handleSend can re-add it
+                    onUpdateHistory(history.filter(m => m.id !== lastUserMsg.id));
+                    // Use a timeout to ensure state updates before calling handleSend
+                    setTimeout(() => handleSend(), 0);
+                  }
+                }}
+                className="px-4 py-2 bg-destructive text-white text-xs font-bold rounded-full hover:bg-destructive/90 transition-all active:scale-95 flex-shrink-0"
+              >
+                {t('common.retry') || 'Retry'}
+              </button>
             </div>
           )}
 

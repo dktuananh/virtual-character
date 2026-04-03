@@ -58,6 +58,8 @@
     "send": "Send",
     "restore_defaults": "Restore Defaults",
     "restore_defaults_desc": "Bring back the sample English teacher characters.",
+    "retry": "Retry",
+    "offline_mode": "Offline Mode - AI requires internet",
     "stats": {
       "characters": "Characters Created",
       "messages": "Total Messages"
