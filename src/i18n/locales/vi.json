@@ -59,6 +59,8 @@
     "restore_defaults": "Khôi phục Mặc định",
     "restore_defaults_desc": "Mang lại các nhân vật giáo viên tiếng Anh mẫu.",
     "retry": "Thử lại",
+    "correction": "Sửa lỗi Ngữ pháp",
+    "suggestions": "Gợi ý trả lời",
     "offline_mode": "Chế độ Ngoại tuyến - AI cần internet",
     "stats": {
       "characters": "Nhân vật đã tạo",

@@ -24,5 +24,7 @@ export interface Message {
   role: 'user' | 'model';
   content: string;
   emotion?: string;
+  correction?: string;
+  suggestions?: string[];
   timestamp: number;
 }

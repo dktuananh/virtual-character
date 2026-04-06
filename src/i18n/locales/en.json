@@ -59,6 +59,8 @@
     "restore_defaults": "Restore Defaults",
     "restore_defaults_desc": "Bring back the sample English teacher characters.",
     "retry": "Retry",
+    "correction": "Grammar Correction",
+    "suggestions": "Suggestions",
     "offline_mode": "Offline Mode - AI requires internet",
     "stats": {
       "characters": "Characters Created",

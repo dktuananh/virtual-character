@@ -1157,6 +1157,11 @@ function ChatView({
   const [showEmoji, setShowEmoji] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const isEnglishResponse = (text: string) => {
+    const vietnameseChars = /[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i;
+    return !vietnameseChars.test(text);
+  };
+
   const emojis = ['😊', '😂', '🥰', '😎', '🤔', '😢', '🔥', '✨', '👍', '❤️', '🤖', '🌌'];
 
   const addEmoji = (emoji: string) => {
@@ -1202,11 +1207,13 @@ function ChatView({
 
       for await (const chunk of stream) {
         fullText += chunk;
-        const { emotion, content } = parseResponse(fullText);
+        const { emotion, content, correction, suggestions } = parseResponse(fullText);
         modelMsg = {
           ...modelMsg,
           content: content,
-          emotion: emotion
+          emotion: emotion,
+          correction: correction,
+          suggestions: suggestions
         };
         onUpdateHistory([...updatedHistory, modelMsg]);
       }
@@ -1308,8 +1315,42 @@ function ChatView({
                         />
                       </div>
                     ) : (
-                      <div className="markdown-body">
-                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      <div className="space-y-4">
+                        <div className="markdown-body">
+                          <ReactMarkdown>{msg.content}</ReactMarkdown>
+                        </div>
+                        
+                        {msg.correction && (
+                          <div className="mt-3 pt-3 border-t border-white/5 space-y-2">
+                            <div className="flex items-center gap-2 text-[10px] font-bold text-primary uppercase tracking-wider">
+                              <CheckCircle2 size={12} />
+                              {isEnglishResponse(msg.content) ? 'Grammar Correction' : 'Sửa lỗi Ngữ pháp'}
+                            </div>
+                            <p className="text-xs text-on-surface-variant bg-primary/5 p-2 rounded-lg italic border-l-2 border-primary">
+                              {msg.correction}
+                            </p>
+                          </div>
+                        )}
+
+                        {msg.suggestions && msg.suggestions.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-white/5 space-y-2">
+                            <div className="flex items-center gap-2 text-[10px] font-bold text-secondary uppercase tracking-wider">
+                              <Sparkles size={12} />
+                              {isEnglishResponse(msg.content) ? 'Suggestions' : 'Gợi ý trả lời'}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {msg.suggestions.map((suggestion, sIdx) => (
+                                <button 
+                                  key={sIdx}
+                                  onClick={() => setInput(suggestion)}
+                                  className="text-[10px] bg-secondary/10 hover:bg-secondary/20 text-secondary px-3 py-1.5 rounded-full transition-all border border-secondary/20"
+                                >
+                                  {suggestion}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

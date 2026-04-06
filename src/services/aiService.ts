@@ -9,11 +9,33 @@ export async function* streamChat(character: Character, history: Message[], user
     throw new Error("API Key is missing. Please configure it in your Settings.");
   }
 
+  const isLanguageTeacher = 
+    character.description.toLowerCase().includes('english') || 
+    character.description.toLowerCase().includes('tiếng anh') ||
+    character.description.toLowerCase().includes('ngoại ngữ') ||
+    character.personality.toLowerCase().includes('teacher') ||
+    character.personality.toLowerCase().includes('giáo viên') ||
+    character.name.toLowerCase().includes('ielts') ||
+    character.name.toLowerCase().includes('toeic');
+
+  const languageInstruction = isLanguageTeacher ? `
+LANGUAGE LEARNING SUPPORT:
+Since you are a language teacher/coach, please also provide:
+1. GRAMMAR CORRECTION: If the user's previous message has any grammar or spelling mistakes, provide a corrected version.
+2. SUGGESTIONS: Provide 2-3 short suggestions for how the user could respond to your current message.
+
+FORMATTING FOR CORRECTIONS AND SUGGESTIONS:
+At the very end of your message, if applicable, use these markers:
+[CORRECTION: (corrected text here)]
+[SUGGESTIONS: (suggestion 1) | (suggestion 2) | (suggestion 3)]
+` : "";
+
   const systemInstruction = `You are ${character.name}. 
 Personality: ${character.personality}
 Description: ${character.description}
 Context: ${character.context}
 Backstory: ${character.story}
+${languageInstruction}
 
 CONVERSATIONAL GUIDELINES:
 1. BE HUMAN: Avoid typical AI patterns. Don't be overly helpful or formal unless that's your specific character. Use natural sentence structures, occasional fragments, and varied vocabulary.
@@ -54,29 +76,25 @@ Keep the emotion/action part descriptive, nuanced, and relevant to your characte
       }
     });
 
-    // Retry logic for 503 errors
-    let retries = 3;
-    let delay = 1000;
+    // Retry logic: 3 total attempts, 3s delay
+    let attempts = 3;
+    const delay = 3000;
     let result;
 
-    while (retries >= 0) {
+    while (attempts > 0) {
       try {
         result = await chat.sendMessageStream({ message: userMessage });
         break;
       } catch (error: any) {
-        const is503 = error?.message?.includes('503') || error?.status === 503;
-        if (is503 && retries > 0) {
-          console.warn(`Gemini API busy (503). Retrying in ${delay}ms... (${retries} attempts left)`);
+        attempts--;
+        if (attempts > 0) {
+          console.warn(`AI request failed. Retrying in ${delay}ms... (${attempts} attempts left)`);
           await new Promise(resolve => setTimeout(resolve, delay));
-          retries--;
-          delay *= 2; // Exponential backoff
           continue;
         }
         
-        if (is503) {
-          throw new Error("The AI is currently very busy. Please wait a few seconds and try again.");
-        }
-        throw error;
+        // All attempts failed
+        throw new Error("Lỗi kết nối. Vui lòng kiểm tra lại đường truyền và thử lại sau.");
       }
     }
 
@@ -117,13 +135,32 @@ Keep the emotion/action part descriptive, nuanced, and relevant to your characte
   }
 }
 
-export function parseResponse(text: string): { emotion: string; content: string } {
-  const match = text.match(/^\[(.*?)\]\s*(.*)/s);
-  if (match) {
-    return {
-      emotion: match[1],
-      content: match[2]
-    };
+export function parseResponse(text: string): { emotion: string; content: string; correction?: string; suggestions?: string[] } {
+  let emotion = "";
+  let content = text;
+  let correction: string | undefined;
+  let suggestions: string[] | undefined;
+
+  // Extract emotion
+  const emotionMatch = content.match(/^\[(.*?)\]\s*(.*)/s);
+  if (emotionMatch) {
+    emotion = emotionMatch[1];
+    content = emotionMatch[2];
   }
-  return { emotion: "", content: text };
+
+  // Extract correction
+  const correctionMatch = content.match(/\[CORRECTION:\s*(.*?)\]/s);
+  if (correctionMatch) {
+    correction = correctionMatch[1];
+    content = content.replace(correctionMatch[0], '').trim();
+  }
+
+  // Extract suggestions
+  const suggestionsMatch = content.match(/\[SUGGESTIONS:\s*(.*?)\]/s);
+  if (suggestionsMatch) {
+    suggestions = suggestionsMatch[1].split('|').map(s => s.trim()).filter(s => s.length > 0);
+    content = content.replace(suggestionsMatch[0], '').trim();
+  }
+
+  return { emotion, content, correction, suggestions };
 }
