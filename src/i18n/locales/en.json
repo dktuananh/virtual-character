@@ -62,6 +62,10 @@
     "correction": "Grammar Correction",
     "suggestions": "Suggestions",
     "offline_mode": "Offline Mode - AI requires internet",
+    "voice_setting": "Character Voice",
+    "start_voice": "Start Voice Input",
+    "stop_voice": "Stop Listening",
+    "speech_not_supported": "Your browser does not support speech recognition.",
     "stats": {
       "characters": "Characters Created",
       "messages": "Total Messages"

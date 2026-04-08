@@ -27,7 +27,11 @@ import {
   Menu,
   X,
   Languages,
-  WifiOff
+  WifiOff,
+  Volume2,
+  VolumeX,
+  Mic,
+  MicOff
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
@@ -228,7 +232,8 @@ export default function App() {
     story: '',
     avatarUrl: '',
     status: 'Operational',
-    version: 'v1.0'
+    version: 'v1.0',
+    voiceId: ''
   });
 
   const handleCreateCharacter = () => {
@@ -263,7 +268,8 @@ export default function App() {
       story: '',
       avatarUrl: '',
       status: 'Operational',
-      version: 'v1.0'
+      version: 'v1.0',
+      voiceId: ''
     });
   };
 
@@ -277,7 +283,8 @@ export default function App() {
       story: char.story,
       avatarUrl: char.avatarUrl,
       status: char.status,
-      version: char.version
+      version: char.version,
+      voiceId: char.voiceId
     });
     setView('creator');
   };
@@ -669,6 +676,13 @@ export default function App() {
                       <InputGroup label={t('common.personality')} placeholder="Analytical, witty, slightly cynical..." value={newChar.personality} onChange={v => setNewChar({...newChar, personality: v})} />
                       <InputGroup label={t('common.setting_context')} placeholder="e.g. A neon-lit rooftop in Neo-Tokyo..." value={newChar.context} onChange={v => setNewChar({...newChar, context: v})} />
                       <TextAreaGroup label={t('common.biography')} placeholder="A brief overview of who this character is to the world..." value={newChar.description} onChange={v => setNewChar({...newChar, description: v})} rows={3} />
+                      
+                      <div className="pt-4">
+                        <VoiceSelector 
+                          value={newChar.voiceId || ''} 
+                          onChange={v => setNewChar({...newChar, voiceId: v})} 
+                        />
+                      </div>
                     </div>
                   </section>
 
@@ -1150,16 +1164,86 @@ function ChatView({
   userAvatar: string,
   setConfirmModal: (modal: any) => void
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const isEnglishResponse = (text: string) => {
     const vietnameseChars = /[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i;
     return !vietnameseChars.test(text);
+  };
+
+  const handleSpeak = (text: string, messageId: string) => {
+    if (isSpeaking === messageId) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(null);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Try to find the selected voice
+    if (character.voiceId) {
+      const voices = window.speechSynthesis.getVoices();
+      const selectedVoice = voices.find(v => v.voiceURI === character.voiceId);
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+      }
+    }
+
+    utterance.onend = () => setIsSpeaking(null);
+    utterance.onerror = () => setIsSpeaking(null);
+    
+    setIsSpeaking(messageId);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert(t('common.speech_not_supported') || "Your browser does not support speech recognition.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
+
+    recognition.onstart = () => {
+      setIsListening(true);
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(prev => prev + (prev ? ' ' : '') + transcript);
+      setIsListening(false);
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
   };
 
   const emojis = ['😊', '😂', '🥰', '😎', '🤔', '😢', '🔥', '✨', '👍', '❤️', '🤖', '🌌'];
@@ -1285,9 +1369,23 @@ function ChatView({
                   msg.role === 'user' ? "items-end" : "items-start"
                 )}>
                   {msg.emotion && (
-                    <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] font-black text-secondary/70 px-1 italic">
-                      <Sparkles size={10} className="animate-pulse" />
-                      {msg.emotion}
+                    <div className="flex items-center justify-between w-full px-1">
+                      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] font-black text-secondary/70 italic">
+                        <Sparkles size={10} className="animate-pulse" />
+                        {msg.emotion}
+                      </div>
+                      {msg.role === 'model' && (
+                        <button 
+                          onClick={() => handleSpeak(msg.content, msg.id)}
+                          className={cn(
+                            "p-1 rounded-full transition-all hover:bg-white/10",
+                            isSpeaking === msg.id ? "text-primary animate-pulse" : "text-on-surface-variant"
+                          )}
+                          title="Listen"
+                        >
+                          {isSpeaking === msg.id ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                        </button>
+                      )}
                     </div>
                   )}
                   <div className={cn(
@@ -1375,6 +1473,17 @@ function ChatView({
                 <Smile size={20} />
               </button>
               
+              <button 
+                onClick={toggleListening}
+                className={cn(
+                  "p-2 sm:p-3 transition-colors",
+                  isListening ? "text-destructive animate-pulse" : "text-on-surface-variant hover:text-primary"
+                )}
+                title={isListening ? (t('common.stop_voice') || "Stop Listening") : (t('common.start_voice') || "Start Voice Input")}
+              >
+                {isListening ? <MicOff size={20} /> : <Mic size={20} />}
+              </button>
+
               <AnimatePresence>
                 {showEmoji && (
                   <motion.div 
@@ -1476,5 +1585,37 @@ function SelectGroup({ label, value, onChange, options }: { label: string, value
         ))}
       </select>
     </div>
+  );
+}
+
+function VoiceSelector({ value, onChange }: { value: string, onChange: (v: string) => void }) {
+  const { t } = useTranslation();
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+
+  useEffect(() => {
+    const updateVoices = () => {
+      const availableVoices = window.speechSynthesis.getVoices();
+      setVoices(availableVoices);
+    };
+
+    updateVoices();
+    window.speechSynthesis.onvoiceschanged = updateVoices;
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const options = [
+    { value: '', label: 'Default System Voice' },
+    ...voices.map(v => ({ value: v.voiceURI, label: `${v.name} (${v.lang})` }))
+  ];
+
+  return (
+    <SelectGroup 
+      label={t('common.voice_setting') || 'Character Voice'} 
+      value={value} 
+      onChange={onChange} 
+      options={options} 
+    />
   );
 }

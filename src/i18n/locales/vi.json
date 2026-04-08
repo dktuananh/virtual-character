@@ -62,6 +62,10 @@
     "correction": "Sửa lỗi Ngữ pháp",
     "suggestions": "Gợi ý trả lời",
     "offline_mode": "Chế độ Ngoại tuyến - AI cần internet",
+    "voice_setting": "Giọng nói Nhân vật",
+    "start_voice": "Bắt đầu nhập bằng giọng nói",
+    "stop_voice": "Dừng nghe",
+    "speech_not_supported": "Trình duyệt của bạn không hỗ trợ nhận dạng giọng nói.",
     "stats": {
       "characters": "Nhân vật đã tạo",
       "messages": "Tổng số tin nhắn"
