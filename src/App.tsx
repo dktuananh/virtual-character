@@ -40,6 +40,38 @@ import { Character, Message, AIConfig, AIProvider } from './types';
 import { streamChat, parseResponse, translateText } from './services/aiService';
 import { cn } from './lib/utils';
 
+function getBestEnglishVoice(voices: SpeechSynthesisVoice[]) {
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+  let preferredNames: string[] = [];
+
+  if (/iPhone|iPad|iPod/.test(ua)) {
+    preferredNames = ['Samantha', 'Nicky', 'Aaron'];
+  } else if (/Android/.test(ua)) {
+    preferredNames = ['Google US English', 'en-US-Language', 'en-us-x-sfg-local'];
+  } else if (/Macintosh/.test(ua)) {
+    preferredNames = ['Samantha', 'Alex', 'Victoria', 'Daniel'];
+  } else if (/Windows/.test(ua)) {
+    preferredNames = ['Microsoft Zira', 'Microsoft David', 'Microsoft Hazel'];
+  } else {
+    preferredNames = ['Google US English', 'Google UK English Female'];
+  }
+
+  // Exact matches first
+  let best = voices.find(v => preferredNames.includes(v.name));
+  
+  // Partial matches if no exact match
+  if (!best) {
+    best = voices.find(v => preferredNames.some(name => v.name.includes(name)));
+  }
+
+  // Language match if still no match
+  if (!best) {
+    best = voices.find(v => v.lang.startsWith('en-US')) || voices.find(v => v.lang.startsWith('en'));
+  }
+  
+  return best;
+}
+
 const INITIAL_CHARACTERS: Character[] = [
   {
     id: '1',
@@ -1233,12 +1265,23 @@ function ChatView({
     const utterance = new SpeechSynthesisUtterance(text);
     
     // Try to find the selected voice
+    const voices = window.speechSynthesis.getVoices();
+    let selectedVoice: SpeechSynthesisVoice | undefined;
+    
     if (character.voiceId) {
-      const voices = window.speechSynthesis.getVoices();
-      const selectedVoice = voices.find(v => v.voiceURI === character.voiceId);
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
+      selectedVoice = voices.find(v => v.voiceURI === character.voiceId);
+    }
+    
+    // Fallback logic for English if no voice selected or selected voice not found on this device
+    if (!selectedVoice && isEnglishResponse(text)) {
+      const bestEN = getBestEnglishVoice(voices);
+      if (bestEN) {
+        selectedVoice = bestEN;
       }
+    }
+
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
     }
 
     utterance.onend = () => setIsSpeaking(null);
@@ -1659,7 +1702,7 @@ function TextAreaGroup({ label, placeholder, value, onChange, rows }: { label: s
   );
 }
 
-function SelectGroup({ label, value, onChange, options }: { label: string, value: string, onChange: (v: string) => void, options: { value: string, label: string }[] }) {
+function SelectGroup({ label, value, onChange, options }: { label: string, value: string, onChange: (v: string) => void, options: { value: string, label: string, disabled?: boolean }[] }) {
   return (
     <div className="group">
       <label className="block text-sm font-semibold text-on-surface-variant mb-2 ml-1">{label}</label>
@@ -1669,7 +1712,12 @@ function SelectGroup({ label, value, onChange, options }: { label: string, value
         onChange={e => onChange(e.target.value)}
       >
         {options.map((opt, index) => (
-          <option key={`${opt.value}-${index}`} value={opt.value} className="bg-surface-container-highest text-on-surface">
+          <option 
+            key={`${opt.value}-${index}`} 
+            value={opt.value} 
+            disabled={opt.disabled}
+            className="bg-surface-container-highest text-on-surface"
+          >
             {opt.label}
           </option>
         ))}
@@ -1695,17 +1743,51 @@ function VoiceSelector({ value, onChange }: { value: string, onChange: (v: strin
     };
   }, []);
 
+  const bestEN = getBestEnglishVoice(voices);
+  
+  // Check if current value exists in current device voices
+  const voiceExists = voices.some(v => v.voiceURI === value);
+
   const options = [
-    { value: '', label: 'Default System Voice' },
-    ...voices.map(v => ({ value: v.voiceURI, label: `${v.name} (${v.lang})` }))
+    { value: '', label: `✨ Recommended (${bestEN?.name || 'Default English'})` },
+    ...voices
+      .filter(v => v.lang.startsWith('vi') || v.lang.startsWith('en'))
+      .sort((a, b) => {
+        // Vietnamese first, then English
+        if (a.lang.startsWith('vi') && !b.lang.startsWith('vi')) return -1;
+        if (!a.lang.startsWith('vi') && b.lang.startsWith('vi')) return 1;
+        
+        // Secondary sort: prioritize recommended English voice for this device
+        const isARec = a.voiceURI === bestEN?.voiceURI;
+        const isBRec = b.voiceURI === bestEN?.voiceURI;
+        if (isARec && !isBRec) return -1;
+        if (!isARec && isBRec) return 1;
+        
+        return a.name.localeCompare(b.name);
+      })
+      .map(v => ({ 
+        value: v.voiceURI, 
+        label: `${v.lang.startsWith('vi') ? '🇻🇳' : '🇺🇸'} ${v.name}${v.voiceURI === bestEN?.voiceURI ? ' (Device Choice)' : ''}` 
+      })),
+    { value: 'divider', label: '──────────', disabled: true },
+    ...voices
+      .filter(v => !v.lang.startsWith('vi') && !v.lang.startsWith('en'))
+      .map(v => ({ value: v.voiceURI, label: `🌐 ${v.name} (${v.lang})` }))
   ];
 
   return (
-    <SelectGroup 
-      label={t('common.voice_setting') || 'Character Voice'} 
-      value={value} 
-      onChange={onChange} 
-      options={options} 
-    />
+    <div className="space-y-1">
+      <SelectGroup 
+        label={t('common.voice_setting') || 'Character Voice'} 
+        value={value} 
+        onChange={onChange} 
+        options={options} 
+      />
+      {!voiceExists && value !== '' && (
+        <p className="text-[10px] text-tertiary italic ml-1">
+          ⚠️ Current voice setting is not available on this device. Using recommended fallback.
+        </p>
+      )}
+    </div>
   );
 }
