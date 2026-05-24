@@ -1,24 +1,187 @@
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
-import { Character, Message, AIConfig } from "../types";
+import { Character, Message, AIConfig, GeminiKeyEntry } from "../types";
 
-export async function* streamChat(character: Character, history: Message[], userMessage: string, config: AIConfig) {
-  const apiKey = config.apiKey || (config.provider === 'google' ? process.env.GEMINI_API_KEY : '');
+// Helper to get formatted local date (YYYY-MM-DD)
+export function getTodayDateString(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Check and reset keys if the date has changed
+export function checkAndResetKeysPool(pool: GeminiKeyEntry[]): { updated: boolean; pool: GeminiKeyEntry[] } {
+  const today = getTodayDateString();
+  let updated = false;
+
+  const nextPool = pool.map(item => {
+    if (item.lastUsedDate !== today) {
+      updated = true;
+      return {
+        ...item,
+        usageCount: 0,
+        lastUsedDate: today,
+        status: item.status === 'exhausted' ? 'active' : item.status, // Auto reactivate exhausted keys
+        errorMsg: undefined
+      };
+    }
+    return item;
+  });
+
+  return { updated, pool: nextPool };
+}
+
+// Detect request limits/rate limit / quota errors from Gemini
+export function isQuotaExceeded(err: any): boolean {
+  const errMsg = String(err?.message || err || "").toLowerCase();
+  return errMsg.includes("429") || 
+         errMsg.includes("quota") || 
+         errMsg.includes("exhausted") || 
+         errMsg.includes("rate limit") || 
+         errMsg.includes("limit exceeded") ||
+         errMsg.includes("resource_exhausted");
+}
+
+// Detect key invalidation errors
+export function isInvalidKey(err: any): boolean {
+  const errMsg = String(err?.message || err || "").toLowerCase();
+  return errMsg.includes("api_key_invalid") || 
+         errMsg.includes("not valid") || 
+         errMsg.includes("invalid api key") ||
+         errMsg.includes("403") || 
+         errMsg.includes("unauthorized") ||
+         errMsg.includes("key_invalid");
+}
+
+// Resolve the active key to use and increment its usage
+export function resolveGoogleKeyAndIncrement(
+  config: AIConfig, 
+  onUpdateConfig?: (cfg: AIConfig) => void
+): { key: string; entryId?: string } {
+  const defaultKey = config.apiKey || (config.provider === 'google' ? process.env.GEMINI_API_KEY : '') || '';
   
-  if (!apiKey) {
-    throw new Error("API Key is missing. Please configure it in your Settings.");
+  if (!config.useRotation || !config.geminiKeysPool || config.geminiKeysPool.length === 0) {
+    return { key: defaultKey };
   }
 
-  const isLanguageTeacher = 
-    character.description.toLowerCase().includes('english') || 
-    character.description.toLowerCase().includes('tiếng anh') ||
-    character.description.toLowerCase().includes('ngoại ngữ') ||
-    character.personality.toLowerCase().includes('teacher') ||
-    character.personality.toLowerCase().includes('giáo viên') ||
-    character.name.toLowerCase().includes('ielts') ||
-    character.name.toLowerCase().includes('toeic');
+  // Ensure daily reset
+  const { updated, pool: resetPool } = checkAndResetKeysPool(config.geminiKeysPool);
+  let activePool = resetPool;
 
-  const languageInstruction = isLanguageTeacher ? `
+  const today = getTodayDateString();
+  
+  // Find first key that is active and hasn't hit its limit
+  let selectedEntryIdx = activePool.findIndex(
+    item => item.status === 'active' && item.usageCount < (item.maxDailyRequests ?? 20)
+  );
+
+  // If no active key is found, throw an error
+  if (selectedEntryIdx === -1) {
+    if (updated && onUpdateConfig) {
+      onUpdateConfig({ ...config, geminiKeysPool: activePool });
+    }
+    throw new Error("Tất cả API Key Gemini đều hết lượt gọi hôm nay hoặc bị lỗi. Vui lòng thêm/mở khóa API key trong Cài đặt!");
+  }
+
+  const entry = activePool[selectedEntryIdx];
+  const updatedEntry: GeminiKeyEntry = {
+    ...entry,
+    usageCount: entry.usageCount + 1,
+    lastUsedDate: today
+  };
+
+  const nextPool = [...activePool];
+  nextPool[selectedEntryIdx] = updatedEntry;
+
+  const nextConfig = {
+    ...config,
+    geminiKeysPool: nextPool
+  };
+
+  if (onUpdateConfig) {
+    onUpdateConfig(nextConfig);
+  }
+
+  return { key: entry.key, entryId: entry.id };
+}
+
+// Mark a key as failed or exhausted
+export function markGoogleKeyAsFailed(
+  config: AIConfig,
+  keyId: string,
+  errorReason: 'exhausted' | 'failed',
+  errorMessage: string,
+  onUpdateConfig?: (cfg: AIConfig) => void
+): AIConfig {
+  if (!config.geminiKeysPool) return config;
+
+  const nextPool = config.geminiKeysPool.map(item => {
+    if (item.id === keyId) {
+      return {
+        ...item,
+        status: errorReason,
+        errorMsg: errorMessage.substring(0, 150) // truncate error msg
+      } as GeminiKeyEntry;
+    }
+    return item;
+  });
+
+  const nextConfig = {
+    ...config,
+    geminiKeysPool: nextPool
+  };
+
+  if (onUpdateConfig) {
+    onUpdateConfig(nextConfig);
+  }
+
+  return nextConfig;
+}
+
+export async function* streamChat(
+  character: Character, 
+  history: Message[], 
+  userMessage: string, 
+  config: AIConfig,
+  onUpdateConfig?: (cfg: AIConfig) => void
+) {
+  let currentConfig = { ...config };
+
+  if (currentConfig.provider === 'google') {
+    let success = false;
+    let poolKeysCount = currentConfig.geminiKeysPool?.length || 0;
+    // Retry attempts is either the pool size (for rotation) or 3 times
+    let attempts = (currentConfig.useRotation && poolKeysCount > 0) ? poolKeysCount : 3;
+
+    while (attempts > 0 && !success) {
+      let activeKeyInfo;
+      try {
+        activeKeyInfo = resolveGoogleKeyAndIncrement(currentConfig, (updatedCfg) => {
+          currentConfig = updatedCfg;
+          if (onUpdateConfig) onUpdateConfig(updatedCfg);
+        });
+      } catch (poolErr: any) {
+        throw poolErr; // No keys available in pool, bubble up the error
+      }
+
+      const { key: useKey, entryId } = activeKeyInfo;
+
+      if (!useKey) {
+        throw new Error("API Key is missing. Please configure it in your Settings.");
+      }
+
+      const isLanguageTeacher = 
+        character.description.toLowerCase().includes('english') || 
+        character.description.toLowerCase().includes('tiếng anh') ||
+        character.description.toLowerCase().includes('ngoại ngữ') ||
+        character.personality.toLowerCase().includes('teacher') ||
+        character.personality.toLowerCase().includes('giáo viên') ||
+        character.name.toLowerCase().includes('ielts') ||
+        character.name.toLowerCase().includes('toeic');
+
+      const languageInstruction = isLanguageTeacher ? `
 LANGUAGE LEARNING SUPPORT:
 Since you are a language teacher/coach, please also provide:
 1. GRAMMAR CORRECTION: If the user's previous message has any grammar or spelling mistakes, provide a corrected version.
@@ -30,7 +193,7 @@ At the very end of your message, if applicable, use these markers:
 [SUGGESTIONS: (suggestion 1) | (suggestion 2) | (suggestion 3)]
 ` : "";
 
-  const systemInstruction = `You are ${character.name}. 
+      const systemInstruction = `You are ${character.name}. 
 Personality: ${character.personality}
 Description: ${character.description}
 Context: ${character.context}
@@ -55,62 +218,88 @@ Example:
 
 Keep the emotion/action part descriptive, nuanced, and relevant to your character's personality. Speak naturally, expressively, and stay in character at all times. Be concise but impactful.`;
 
-  if (config.provider === 'google') {
-    const ai = new GoogleGenAI({ apiKey: apiKey });
-    let modelName = config.modelId || "gemini-3-flash-preview";
-    if (!modelName.startsWith('models/')) {
-      modelName = `models/${modelName}`;
-    }
-    
-    // Limit history to last 20 messages for better context
-    const recentHistory = history.slice(-20).map(m => ({
-      role: m.role === 'model' ? 'model' : 'user' as any,
-      parts: [{ text: m.content }]
-    }));
-
-    const chat = ai.chats.create({
-      model: modelName,
-      history: recentHistory,
-      config: {
-        systemInstruction,
+      const ai = new GoogleGenAI({ apiKey: useKey });
+      let modelName = currentConfig.modelId || "gemini-3-flash-preview";
+      if (!modelName.startsWith('models/')) {
+        modelName = `models/${modelName}`;
       }
-    });
+      
+      const recentHistory = history.slice(-20).map(m => ({
+        role: m.role === 'model' ? 'model' : 'user' as any,
+        parts: [{ text: m.content }]
+      }));
 
-    // Retry logic: 3 total attempts, 3s delay
-    let attempts = 3;
-    const delay = 3000;
-    let result;
+      const chat = ai.chats.create({
+        model: modelName,
+        history: recentHistory,
+        config: {
+          systemInstruction,
+        }
+      });
 
-    while (attempts > 0) {
       try {
-        result = await chat.sendMessageStream({ message: userMessage });
-        break;
+        const result = await chat.sendMessageStream({ message: userMessage });
+        
+        // Read stream and yield values
+        for await (const chunk of result) {
+          const text = chunk.text;
+          if (text) yield text;
+        }
+        success = true;
+        break; // Successfully got the response, break out of retry loop!
       } catch (error: any) {
         attempts--;
+        console.error(`Gemini call error with key ID ${entryId || 'default'}:`, error);
+
+        if (entryId && (isQuotaExceeded(error) || isInvalidKey(error))) {
+          const reason = isQuotaExceeded(error) ? 'exhausted' : 'failed';
+          const errorMsg = error?.message || "Lượt gọi bị từ chối do lỗi Quota hoặc API Key.";
+          console.warn(`[Rotation Mode] Key ID ${entryId} failed. Reason: ${reason}. Auto-rotating...`);
+          
+          currentConfig = markGoogleKeyAsFailed(currentConfig, entryId, reason, errorMsg, (updatedCfg) => {
+            if (onUpdateConfig) onUpdateConfig(updatedCfg);
+          });
+          continue; // Instantly retry with the next key!
+        }
+
+        // Standard retry with delay if attempts remain
         if (attempts > 0) {
-          console.warn(`AI request failed. Retrying in ${delay}ms... (${attempts} attempts left)`);
-          await new Promise(resolve => setTimeout(resolve, delay));
+          console.warn(`Request failed. Retrying in 2000ms... (${attempts} attempts left)`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
           continue;
         }
-        
-        // All attempts failed
-        throw new Error("Lỗi kết nối. Vui lòng kiểm tra lại đường truyền và thử lại sau.");
+
+        throw new Error(error?.message || "Lỗi kết nối hoặc API Key bị lỗi. Vui lòng kiểm tra lại thiết lập.");
       }
+    }
+  } else if (currentConfig.provider === 'openai') {
+    const apiKey = currentConfig.apiKey;
+    if (!apiKey) {
+      throw new Error("API Key is missing. Please configure it in your Settings.");
     }
 
-    if (result) {
-      for await (const chunk of result) {
-        const text = chunk.text;
-        if (text) yield text;
-      }
-    }
-  } else if (config.provider === 'openai') {
+    const systemInstruction = `You are ${character.name}. 
+Personality: ${character.personality}
+Description: ${character.description}
+Context: ${character.context}
+Backstory: ${character.story}
+
+CONVERSATIONAL GUIDELINES:
+1. BE HUMAN: Avoid typical AI patterns. Don't be overly helpful or formal unless that's your specific character. Use natural sentence structures, occasional fragments, and varied vocabulary.
+2. SHOW, DON'T JUST TELL: Use your personality to influence HOW you speak, not just WHAT you say. If you're cynical, be brief and sharp. If you're poetic, use metaphors.
+3. REACTIVE: Acknowledge what the user said before moving to new topics. React to their tone and emotions.
+4. NO REPETITION: Do not start every message with the same phrases. Vary your openings.
+5. STAY IN CHARACTER: Never break character. Never mention you are an AI, a language model, or a program.
+
+CRITICAL FORMATTING INSTRUCTION: 
+Every response MUST start with a descriptive emotion, feeling, or action enclosed in square brackets, followed by your actual message.
+The emotion/action should reflect your current state and the context of the conversation.`;
+
     const openai = new OpenAI({ 
       apiKey: apiKey,
       dangerouslyAllowBrowser: true 
     });
 
-    // Limit history to last 20 messages
     const recentHistory = history.slice(-20).map(m => ({
       role: m.role === 'model' ? 'assistant' : 'user' as any,
       content: m.content
@@ -123,7 +312,7 @@ Keep the emotion/action part descriptive, nuanced, and relevant to your characte
     ];
 
     const stream = await openai.chat.completions.create({
-      model: config.modelId || "gpt-4o",
+      model: currentConfig.modelId || "gpt-4o",
       messages,
       stream: true,
     });
@@ -135,7 +324,12 @@ Keep the emotion/action part descriptive, nuanced, and relevant to your characte
   }
 }
 
-export async function translateText(text: string, targetLanguage: string, config: AIConfig): Promise<string> {
+export async function translateText(
+  text: string, 
+  targetLanguage: string, 
+  config: AIConfig,
+  onUpdateConfig?: (cfg: AIConfig) => void
+): Promise<string> {
   if (config.translationProvider === 'free') {
     try {
       const response = await fetch(
@@ -150,27 +344,69 @@ export async function translateText(text: string, targetLanguage: string, config
     }
   }
 
-  const apiKey = config.apiKey || (config.provider === 'google' ? process.env.GEMINI_API_KEY : '');
-  if (!apiKey) throw new Error("API Key is missing.");
-
+  let currentConfig = { ...config };
   const prompt = `Translate the following text to ${targetLanguage}. Provide ONLY the translated text, no explanations or extra characters.\n\nText: ${text}`;
 
-  if (config.provider === 'google') {
-    const ai = new GoogleGenAI({ apiKey: apiKey });
-    let modelName = config.modelId || "gemini-3-flash-preview";
-    if (!modelName.startsWith('models/')) {
-      modelName = `models/${modelName}`;
+  if (currentConfig.provider === 'google') {
+    let success = false;
+    let poolKeysCount = currentConfig.geminiKeysPool?.length || 0;
+    let attempts = (currentConfig.useRotation && poolKeysCount > 0) ? poolKeysCount : 3;
+
+    while (attempts > 0 && !success) {
+      let activeKeyInfo;
+      try {
+        activeKeyInfo = resolveGoogleKeyAndIncrement(currentConfig, (updatedCfg) => {
+          currentConfig = updatedCfg;
+          if (onUpdateConfig) onUpdateConfig(updatedCfg);
+        });
+      } catch (poolErr: any) {
+        throw poolErr;
+      }
+
+      const { key: useKey, entryId } = activeKeyInfo;
+
+      if (!useKey) throw new Error("API Key is missing.");
+
+      const ai = new GoogleGenAI({ apiKey: useKey });
+      let modelName = currentConfig.modelId || "gemini-3-flash-preview";
+      if (!modelName.startsWith('models/')) {
+        modelName = `models/${modelName}`;
+      }
+
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: [{ role: 'user', parts: [{ text: prompt }] }]
+        });
+        success = true;
+        return response.text || "";
+      } catch (error: any) {
+        attempts--;
+        console.error(`Translate error with key ID ${entryId || 'default'}:`, error);
+
+        if (entryId && (isQuotaExceeded(error) || isInvalidKey(error))) {
+          const reason = isQuotaExceeded(error) ? 'exhausted' : 'failed';
+          const errorMsg = error?.message || "Dịch thất bại.";
+          currentConfig = markGoogleKeyAsFailed(currentConfig, entryId, reason, errorMsg, (updatedCfg) => {
+            if (onUpdateConfig) onUpdateConfig(updatedCfg);
+          });
+          continue;
+        }
+
+        if (attempts > 0) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+        throw new Error(error?.message || "Dịch thất bại. Vui lòng thử lại.");
+      }
     }
-    
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: [{ role: 'user', parts: [{ text: prompt }] }]
-    });
-    return response.text || "";
+    return "";
   } else {
+    const apiKey = currentConfig.apiKey;
+    if (!apiKey) throw new Error("API Key is missing.");
     const openai = new OpenAI({ apiKey: apiKey, dangerouslyAllowBrowser: true });
     const response = await openai.chat.completions.create({
-      model: config.modelId || "gpt-4o",
+      model: currentConfig.modelId || "gpt-4o",
       messages: [{ role: 'user', content: prompt }],
     });
     return response.choices[0]?.message?.content || "";

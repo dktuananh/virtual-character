@@ -1,11 +1,23 @@
 export type AIProvider = 'google' | 'openai';
 
+export interface GeminiKeyEntry {
+  id: string;
+  key: string;
+  usageCount: number;
+  lastUsedDate: string; // Format: YYYY-MM-DD
+  status: 'active' | 'exhausted' | 'failed';
+  errorMsg?: string;
+  maxDailyRequests?: number;
+}
+
 export interface AIConfig {
   provider: AIProvider;
   modelId: string;
   apiKey: string;
   translationLanguage?: string;
   translationProvider?: 'ai' | 'free';
+  geminiKeysPool?: GeminiKeyEntry[];
+  useRotation?: boolean;
 }
 
 export interface Character {

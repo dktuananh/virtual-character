@@ -32,12 +32,16 @@ import {
   VolumeX,
   Mic,
   MicOff,
-  Globe
+  Globe,
+  Key,
+  RefreshCw,
+  AlertTriangle,
+  AlertCircle
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import { Character, Message, AIConfig, AIProvider } from './types';
-import { streamChat, parseResponse, translateText } from './services/aiService';
+import { streamChat, parseResponse, translateText, getTodayDateString } from './services/aiService';
 import { cn } from './lib/utils';
 
 function getBestEnglishVoice(voices: SpeechSynthesisVoice[]) {
@@ -135,7 +139,9 @@ const DEFAULT_AI_CONFIG: AIConfig = {
   modelId: 'gemini-3-flash-preview',
   apiKey: process.env.GEMINI_API_KEY || '',
   translationLanguage: 'vi',
-  translationProvider: 'free'
+  translationProvider: 'free',
+  geminiKeysPool: [],
+  useRotation: false
 };
 
 export default function App() {
@@ -808,6 +814,7 @@ export default function App() {
                 onUpdateHistory={(newHistory) => setChatHistory(prev => ({ ...prev, [activeCharacter.id]: newHistory }))}
                 isSidebarCollapsed={isSidebarCollapsed}
                 aiConfig={aiConfig}
+                onUpdateAiConfig={setAiConfig}
                 userAvatar={userAvatar}
                 setConfirmModal={setConfirmModal}
               />
@@ -866,6 +873,49 @@ function SettingsView({
   const [tempConfig, setTempConfig] = useState<AIConfig>(aiConfig);
   const [isSaved, setIsSaved] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [newPoolKey, setNewPoolKey] = useState('');
+  const [newPoolKeyLimit, setNewPoolKeyLimit] = useState(20);
+
+  const handleAddKeyToPool = () => {
+    if (!newPoolKey.trim()) return;
+    const newEntry = {
+      id: `key-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      key: newPoolKey.trim(),
+      usageCount: 0,
+      lastUsedDate: getTodayDateString(),
+      status: 'active' as const,
+      maxDailyRequests: newPoolKeyLimit
+    };
+    
+    const updatedPool = [...(tempConfig.geminiKeysPool || []), newEntry];
+    setTempConfig({
+      ...tempConfig,
+      geminiKeysPool: updatedPool
+    });
+    setNewPoolKey('');
+  };
+
+  const handleRemoveKeyFromPool = (id: string) => {
+    const updatedPool = (tempConfig.geminiKeysPool || []).filter(item => item.id !== id);
+    setTempConfig({
+      ...tempConfig,
+      geminiKeysPool: updatedPool
+    });
+  };
+
+  const handleResetPoolUsage = () => {
+    const updatedPool = (tempConfig.geminiKeysPool || []).map(item => ({
+      ...item,
+      usageCount: 0,
+      status: 'active' as const,
+      errorMsg: undefined
+    }));
+    setTempConfig({
+      ...tempConfig,
+      geminiKeysPool: updatedPool
+    });
+  };
 
   const handleSaveConfig = () => {
     onSaveAiConfig(tempConfig);
@@ -1032,6 +1082,159 @@ function SettingsView({
             onChange={e => setTempConfig({...tempConfig, apiKey: e.target.value})}
           />
         </div>
+
+        {tempConfig.provider === 'google' && (
+          <div className="pt-4 border-t border-outline-variant/10 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-bold text-on-surface flex items-center gap-2">
+                  <Key size={16} className="text-secondary" />
+                  Xoay vòng API Key tự động (Gemini)
+                </h4>
+                <p className="text-xs text-on-surface-variant">Lưu nhiều API key để tự động đổi khi hết lượt gọi miễn phí.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTempConfig({ ...tempConfig, useRotation: !tempConfig.useRotation })}
+                className={cn(
+                  "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                  tempConfig.useRotation ? "bg-primary" : "bg-surface-container-highest"
+                )}
+              >
+                <span
+                  className={cn(
+                    "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition duration-200 ease-in-out",
+                    tempConfig.useRotation ? "translate-x-5" : "translate-x-0"
+                  )}
+                />
+              </button>
+            </div>
+
+            {tempConfig.useRotation && (
+              <div className="space-y-4 pt-2">
+                {/* Add Key Form */}
+                <div className="bg-surface-container-highest/50 p-4 rounded-2xl border border-outline-variant/20 space-y-3">
+                  <h5 className="text-xs font-bold text-on-surface uppercase tracking-wider">Thêm API Key mới vào danh sách</h5>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <input
+                      type="password"
+                      className="flex-1 bg-surface-container-highest border-none rounded-xl px-4 py-2 text-sm text-on-surface focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-outline"
+                      placeholder="Dán API Key Gemini của bạn..."
+                      value={newPoolKey}
+                      onChange={e => setNewPoolKey(e.target.value)}
+                    />
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-on-surface-variant whitespace-nowrap">Giới hạn/ngày:</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="500"
+                        className="w-16 bg-surface-container-highest border-none rounded-xl px-2 py-2 text-sm text-on-surface text-center focus:ring-2 focus:ring-primary/50 transition-all"
+                        value={newPoolKeyLimit}
+                        onChange={e => setNewPoolKeyLimit(parseInt(e.target.value) || 20)}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddKeyToPool}
+                      disabled={!newPoolKey.trim()}
+                      className="bg-secondary text-background px-4 py-2 rounded-xl text-xs font-bold hover:shadow-lg disabled:opacity-40 disabled:hover:shadow-none transition-all cursor-pointer"
+                    >
+                      Thêm vào Pool
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-on-surface-variant italic">
+                    * Gemini API Key ở chế độ miễn phí thường giới hạn khoảng 15 request/phút. Bạn nên đặt giới hạn tối đa ngày khoảng 20-50 để dùng an toàn.
+                  </p>
+                </div>
+
+                {/* Pool List */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-xs font-bold text-on-surface-variant">Danh sách API Key ({tempConfig.geminiKeysPool?.length || 0})</span>
+                    {(tempConfig.geminiKeysPool?.length || 0) > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleResetPoolUsage}
+                        className="text-[10px] text-primary hover:underline flex items-center gap-1 font-bold cursor-pointer"
+                      >
+                        <RefreshCw size={10} />
+                        Reset toàn bộ lượt dùng
+                      </button>
+                    )}
+                  </div>
+
+                  {(tempConfig.geminiKeysPool || []).length === 0 ? (
+                    <div className="text-center p-6 bg-surface-container-highest/20 rounded-2xl border border-dashed border-outline-variant/30 text-xs text-on-surface-variant">
+                      Chưa có API key phụ nào. Vui lòng thêm key ở trên để kích hoạt chế độ xoay vòng.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto custom-scrollbar">
+                      {(tempConfig.geminiKeysPool || []).map((item, idx) => {
+                        const isCurrentlyExhausted = item.usageCount >= (item.maxDailyRequests ?? 20);
+                        const isFailed = item.status === 'failed';
+                        const isExhausted = item.status === 'exhausted' || isCurrentlyExhausted;
+
+                        return (
+                          <div
+                            key={item.id}
+                            className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 bg-surface-container-highest/40 rounded-xl border border-outline-variant/10 gap-3"
+                          >
+                            <div className="flex-1 min-w-0 space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs text-on-surface select-all truncate max-w-[150px] sm:max-w-xs">
+                                  {item.key.substring(0, 8)}...{item.key.substring(item.key.length - 4)}
+                                </span>
+                                
+                                {isFailed ? (
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-destructive/10 text-destructive border border-destructive/20">
+                                    <AlertCircle size={10} />
+                                    Bị lỗi
+                                  </span>
+                                ) : isExhausted ? (
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                                    <AlertTriangle size={10} />
+                                    Hết ngày
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-500/10 text-green-500 border border-green-500/20">
+                                    Sẵn sàng
+                                  </span>
+                                )}
+                              </div>
+                              
+                              <div className="flex items-center gap-4 text-[10px] text-on-surface-variant">
+                                <span>Lượt gọi hôm nay: <strong className="text-on-surface">{item.usageCount}/{item.maxDailyRequests ?? 20}</strong></span>
+                                {item.lastUsedDate && (
+                                  <span>Dùng gần nhất: {item.lastUsedDate}</span>
+                                )}
+                              </div>
+
+                              {item.errorMsg && (
+                                <p className="text-[9px] text-destructive leading-tight italic bg-destructive/5 p-1 rounded border border-destructive/10 whitespace-pre-wrap">
+                                  Chi tiết lỗi: {item.errorMsg}
+                                </p>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveKeyFromPool(item.id)}
+                              className="text-on-surface-variant hover:text-destructive p-1.5 hover:bg-white/5 rounded-lg transition-colors self-end sm:self-auto cursor-pointer"
+                              title="Xóa Key"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         
         <div className="pt-4 flex items-center justify-between">
           <p className="text-[10px] text-on-surface-variant italic max-w-[60%]">
@@ -1227,6 +1430,7 @@ function ChatView({
   onUpdateHistory, 
   isSidebarCollapsed, 
   aiConfig, 
+  onUpdateAiConfig,
   userAvatar,
   setConfirmModal
 }: { 
@@ -1235,6 +1439,7 @@ function ChatView({
   onUpdateHistory: (h: Message[]) => void, 
   isSidebarCollapsed: boolean, 
   aiConfig: AIConfig, 
+  onUpdateAiConfig?: (cfg: AIConfig) => void,
   userAvatar: string,
   setConfirmModal: (modal: any) => void
 }) {
@@ -1300,7 +1505,7 @@ function ChatView({
     setIsTranslating(messageId);
     try {
       const targetLang = aiConfig.translationLanguage || 'vi';
-      const translated = await translateText(text, targetLang, aiConfig);
+      const translated = await translateText(text, targetLang, aiConfig, onUpdateAiConfig);
       
       const newHistory = history.map(m => 
         m.id === messageId ? { ...m, translation: translated } : m
@@ -1385,7 +1590,7 @@ function ChatView({
 
     try {
       let fullText = '';
-      const stream = streamChat(character, history, input, aiConfig);
+      const stream = streamChat(character, history, input, aiConfig, onUpdateAiConfig);
       
       const modelMsgId = `msg-${Date.now() + 1}-${Math.random().toString(36).substr(2, 9)}`;
       let modelMsg: Message = {
