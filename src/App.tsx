@@ -36,7 +36,9 @@ import {
   Key,
   RefreshCw,
   AlertTriangle,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  Check
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
@@ -1454,6 +1456,116 @@ function ChatView({
   const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Selection translation states
+  const [selectionInfo, setSelectionInfo] = useState<{
+    text: string;
+    x: number;
+    y: number;
+    visible: boolean;
+  } | null>(null);
+  const [activeTranslation, setActiveTranslation] = useState<string | null>(null);
+  const [isTranslatingSelection, setIsTranslatingSelection] = useState(false);
+  const [copiedSelection, setCopiedSelection] = useState(false);
+
+  useEffect(() => {
+    const handleSelectionChange = (e: MouseEvent | TouchEvent) => {
+      setTimeout(() => {
+        const selection = window.getSelection();
+        if (!selection) return;
+
+        const selectedText = selection.toString().trim();
+        if (!selectedText) {
+          const target = e.target as HTMLElement;
+          if (!target.closest('.translation-popup')) {
+            setSelectionInfo(null);
+            setActiveTranslation(null);
+          }
+          return;
+        }
+
+        const container = document.getElementById('chat-messages-container');
+        if (container && !container.contains(selection.anchorNode)) {
+          return;
+        }
+
+        if (selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          
+          setSelectionInfo({
+            text: selectedText,
+            x: rect.left + rect.width / 2,
+            y: rect.top,
+            visible: true
+          });
+        }
+      }, 50);
+    };
+
+    const handleDocumentClick = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.translation-popup')) {
+        const selection = window.getSelection();
+        const selectedText = selection ? selection.toString().trim() : '';
+        if (!selectedText) {
+          setSelectionInfo(null);
+          setActiveTranslation(null);
+        }
+      }
+    };
+
+    document.addEventListener('mouseup', handleSelectionChange);
+    document.addEventListener('touchend', handleSelectionChange);
+    document.addEventListener('mousedown', handleDocumentClick);
+    document.addEventListener('touchstart', handleDocumentClick);
+
+    return () => {
+      document.removeEventListener('mouseup', handleSelectionChange);
+      document.removeEventListener('touchend', handleSelectionChange);
+      document.removeEventListener('mousedown', handleDocumentClick);
+      document.removeEventListener('touchstart', handleDocumentClick);
+    };
+  }, []);
+
+  const handleTranslateSelection = async () => {
+    if (!selectionInfo || !selectionInfo.text) return;
+    setIsTranslatingSelection(true);
+    setActiveTranslation(null);
+    try {
+      const targetLang = aiConfig.translationLanguage || 'vi';
+      const result = await translateText(selectionInfo.text, targetLang, aiConfig, onUpdateAiConfig);
+      setActiveTranslation(result);
+    } catch (err) {
+      console.error("Selection translation error:", err);
+      setActiveTranslation("Error translating text. Please try again.");
+    } finally {
+      setIsTranslatingSelection(false);
+    }
+  };
+
+  const handleCopySelectionTranslation = () => {
+    if (!activeTranslation) return;
+    navigator.clipboard.writeText(activeTranslation);
+    setCopiedSelection(true);
+    setTimeout(() => setCopiedSelection(false), 2000);
+  };
+
+  const playSpeechText = (speechText: string, langType: 'src' | 'target') => {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(speechText);
+    const voices = window.speechSynthesis.getVoices();
+    if (langType === 'src') {
+      const bestEN = getBestEnglishVoice(voices);
+      if (bestEN) utterance.voice = bestEN;
+      utterance.lang = 'en-US';
+    } else {
+      const bestVI = voices.find(v => v.lang.startsWith('vi'));
+      if (bestVI) utterance.voice = bestVI;
+      utterance.lang = 'vi-VN';
+    }
+    window.speechSynthesis.speak(utterance);
+  };
+
   const isEnglishResponse = (text: string) => {
     const vietnameseChars = /[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i;
     return !vietnameseChars.test(text);
@@ -1661,7 +1773,7 @@ function ChatView({
             </div>
           )}
 
-          <div className="space-y-8">
+          <div id="chat-messages-container" className="space-y-8">
             {history.map((msg, index) => (
               <div key={`${msg.id}-${index}`} className={cn(
                 "flex items-start gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500",
@@ -1874,6 +1986,109 @@ function ChatView({
           </div>
         </div>
       </div>
+
+      {/* Floating Selection Translator */}
+      <AnimatePresence>
+        {selectionInfo && selectionInfo.visible && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 10 }}
+            style={{
+              position: 'fixed',
+              left: `${selectionInfo.x}px`,
+              top: `${selectionInfo.y}px`,
+            }}
+            className="translation-popup z-[999] -translate-x-1/2 -translate-y-[115%] flex flex-col items-center pointer-events-auto filter drop-shadow-xl"
+          >
+            {!activeTranslation && !isTranslatingSelection ? (
+              <button
+                onClick={handleTranslateSelection}
+                className="flex items-center gap-2 px-3 py-1.5 bg-surface-container-high border border-outline-variant/30 text-xs text-on-surface hover:text-primary rounded-full transition-all hover:bg-neutral-800 font-bold hover:scale-105 shadow-lg shadow-black/40"
+              >
+                <Languages size={13} className="text-secondary animate-pulse" />
+                <span>{t('common.translate_selection') || 'Dịch đoạn văn'}</span>
+              </button>
+            ) : (
+              <div className="w-80 max-w-sm bg-surface-container-high border border-outline-variant/30 rounded-2xl p-4 flex flex-col gap-3 shadow-2xl relative">
+                <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-secondary/70">
+                  <span className="flex items-center gap-1">
+                    <Sparkles size={10} className="text-primary animate-pulse" />
+                    {t('common.translation_result') || 'Kết quả dịch'}
+                  </span>
+                  <button 
+                    onClick={() => {
+                      setSelectionInfo(null);
+                      setActiveTranslation(null);
+                    }}
+                    className="p-1 hover:bg-white/5 rounded-full text-on-surface-variant hover:text-on-surface"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+
+                {isTranslatingSelection ? (
+                  <div className="flex items-center justify-center py-4">
+                    <RefreshCw size={20} className="text-primary animate-spin" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <p className="text-[11px] text-on-surface-variant/70 italic line-clamp-2 select-none">
+                        "{selectionInfo.text}"
+                      </p>
+                      <div className="p-3 bg-background/50 rounded-xl border border-outline-variant/10 text-xs leading-relaxed text-on-surface max-h-40 overflow-y-auto custom-scrollbar font-sans select-text">
+                        {activeTranslation}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between border-t border-outline-variant/15 pt-2 mt-1">
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => playSpeechText(selectionInfo.text, 'src')}
+                          className="flex items-center gap-1 px-2 py-1 bg-white/5 hover:bg-white/10 active:scale-95 rounded-lg text-[9px] font-medium text-on-surface transition-all cursor-pointer"
+                          title="Listen source text"
+                        >
+                          <Volume2 size={10} />
+                          <span>Gốc (EN)</span>
+                        </button>
+                        
+                        <button
+                          onClick={() => playSpeechText(activeTranslation!, 'target')}
+                          className="flex items-center gap-1 px-2 py-1 bg-white/5 hover:bg-white/10 active:scale-95 rounded-lg text-[9px] font-medium text-on-surface transition-all cursor-pointer"
+                          title="Listen translated text"
+                        >
+                          <Volume2 size={10} />
+                          <span>Dịch (VI)</span>
+                        </button>
+                      </div>
+
+                      <button
+                        onClick={handleCopySelectionTranslation}
+                        className="flex items-center gap-1 px-2.5 py-1 bg-primary text-background hover:bg-primary/90 active:scale-95 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer"
+                      >
+                        {copiedSelection ? (
+                          <>
+                            <Check size={10} />
+                            <span>Đã chép</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy size={10} />
+                            <span>Sao chép</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </>
+                )}
+                {/* Visual arrow indicator */}
+                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1.5 w-3 h-3 bg-surface-container-high border-r border-b border-outline-variant/30 rotate-45 z-[-1]" />
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
