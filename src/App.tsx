@@ -89,6 +89,8 @@ const INITIAL_CHARACTERS: Character[] = [
     avatarUrl: 'https://picsum.photos/seed/sunny/400/400',
     version: 'KIDS v1.0',
     status: 'Operational',
+    enableSpellingCorrection: true,
+    enableSuggestions: true,
   },
   {
     id: '2',
@@ -100,6 +102,8 @@ const INITIAL_CHARACTERS: Character[] = [
     avatarUrl: 'https://picsum.photos/seed/alex/400/400',
     version: 'STUDENT v2.1',
     status: 'Operational',
+    enableSpellingCorrection: true,
+    enableSuggestions: true,
   },
   {
     id: '3',
@@ -111,6 +115,8 @@ const INITIAL_CHARACTERS: Character[] = [
     avatarUrl: 'https://picsum.photos/seed/ielts/400/400',
     version: 'IELTS v5.0',
     status: 'Operational',
+    enableSpellingCorrection: true,
+    enableSuggestions: true,
   },
   {
     id: '4',
@@ -122,6 +128,8 @@ const INITIAL_CHARACTERS: Character[] = [
     avatarUrl: 'https://picsum.photos/seed/toeic/400/400',
     version: 'TOEIC v3.2',
     status: 'Operational',
+    enableSpellingCorrection: true,
+    enableSuggestions: true,
   },
   {
     id: '5',
@@ -133,6 +141,8 @@ const INITIAL_CHARACTERS: Character[] = [
     avatarUrl: 'https://picsum.photos/seed/james/400/400',
     version: 'BUSINESS v4.0',
     status: 'Operational',
+    enableSpellingCorrection: true,
+    enableSuggestions: true,
   }
 ];
 
@@ -308,8 +318,8 @@ export default function App() {
     status: 'Operational',
     version: 'v1.0',
     voiceId: '',
-    enableSpellingCorrection: false,
-    enableSuggestions: false
+    enableSpellingCorrection: true,
+    enableSuggestions: true
   });
 
   const handleCreateCharacter = () => {
@@ -346,8 +356,8 @@ export default function App() {
       status: 'Operational',
       version: 'v1.0',
       voiceId: '',
-      enableSpellingCorrection: false,
-      enableSuggestions: false
+      enableSpellingCorrection: true,
+      enableSuggestions: true
     });
   };
 
@@ -2044,13 +2054,13 @@ function ChatView({
                     <motion.div 
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="w-full mt-3 self-stretch flex flex-col gap-2.5"
+                      className="w-full mt-3 self-stretch flex flex-col gap-2"
                     >
-                      <div className="flex items-center gap-1.5 font-bold text-secondary uppercase tracking-widest text-[10px] pl-1.5 select-none">
-                        <Sparkles size={12} className="stroke-[2.5] text-secondary animate-pulse" />
+                      <div className="flex items-center gap-1.5 font-bold text-secondary/90 uppercase tracking-widest text-[9px] pl-1 select-none">
+                        <Sparkles size={11} className="stroke-[2.5] text-secondary animate-pulse" />
                         <span>{isEnglishResponse(msg.content) ? 'Suggested Replies' : 'Gợi ý câu trả lời tiếp theo'}</span>
                       </div>
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-wrap gap-2 pt-0.5">
                         {msg.suggestions.map((suggestion, sIdx) => (
                           <button 
                             key={sIdx}
@@ -2068,10 +2078,9 @@ function ChatView({
                                 }, 50);
                               }
                             }}
-                            className="group relative flex items-center text-xs bg-secondary/10 hover:bg-secondary/20 hover:scale-[1.01] hover:border-secondary/65 text-on-surface hover:text-white px-4 py-3 rounded-2xl transition-all border border-secondary/20 hover:shadow-md active:scale-95 text-left w-full leading-relaxed font-medium"
+                            className="text-xs bg-secondary/15 hover:bg-secondary/25 text-secondary hover:text-white px-3.5 py-1.5 rounded-full transition-all border border-secondary/25 hover:border-secondary/50 active:scale-95 text-left leading-snug font-medium cursor-pointer shadow-sm backdrop-blur-[1px]"
                           >
-                            <span className="text-secondary font-extrabold mr-2.5 text-[10px] bg-secondary/20 px-2 py-0.5 rounded-lg select-none">#{sIdx + 1}</span>
-                            <span className="flex-1 text-on-surface/90 group-hover:text-white transition-colors">{suggestion}</span>
+                            {suggestion}
                           </button>
                         ))}
                       </div>

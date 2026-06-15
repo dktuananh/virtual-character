@@ -257,23 +257,41 @@ export function parseResponse(text: string): { emotion: string; content: string;
     content = emotionMatch[2];
   }
 
-  // Extract correction
-  const correctionRegex = /\[CORRECTION:\s*(.*?)(?:\]|$)/is;
-  const correctionMatch = content.match(correctionRegex);
-  if (correctionMatch) {
-    correction = correctionMatch[1].trim();
-    content = content.replace(correctionMatch[0], '').trim();
+  // Extract correction safely using substring index to handle missing closing brackets perfectly
+  const correctionTag = '[CORRECTION:';
+  const correctionIdx = content.toUpperCase().indexOf(correctionTag.toUpperCase());
+  if (correctionIdx !== -1) {
+    const afterCorrection = content.substring(correctionIdx + correctionTag.length);
+    const closingBracketIdx = afterCorrection.indexOf(']');
+    if (closingBracketIdx !== -1) {
+      correction = afterCorrection.substring(0, closingBracketIdx).trim();
+      content = content.substring(0, correctionIdx).trim() + ' ' + afterCorrection.substring(closingBracketIdx + 1);
+    } else {
+      correction = afterCorrection.trim();
+      content = content.substring(0, correctionIdx).trim();
+    }
   }
 
-  // Extract suggestions
-  const suggestionsRegex = /\[SUGGESTIONS:\s*(.*?)(?:\]|$)/is;
-  const suggestionsMatch = content.match(suggestionsRegex);
-  if (suggestionsMatch) {
-    const rawSuggestions = suggestionsMatch[1];
+  // Extract suggestions safely using substring index to handle missing closing brackets perfectly
+  const suggestionsTag = '[SUGGESTIONS:';
+  const suggestionsIdx = content.toUpperCase().indexOf(suggestionsTag.toUpperCase());
+  if (suggestionsIdx !== -1) {
+    const afterSuggestions = content.substring(suggestionsIdx + suggestionsTag.length);
+    const closingBracketIdx = afterSuggestions.indexOf(']');
+    let rawSuggestions = "";
+    if (closingBracketIdx !== -1) {
+      rawSuggestions = afterSuggestions.substring(0, closingBracketIdx).trim();
+      content = content.substring(0, suggestionsIdx).trim() + ' ' + afterSuggestions.substring(closingBracketIdx + 1);
+    } else {
+      rawSuggestions = afterSuggestions.trim();
+      content = content.substring(0, suggestionsIdx).trim();
+    }
+
     suggestions = rawSuggestions
       .split('|')
       .map(s => {
         let trimmed = s.trim();
+        // Remove enclosing parentheses or brackets if they are present on each suggestion item
         if (trimmed.startsWith('(') && trimmed.endsWith(')')) {
           trimmed = trimmed.substring(1, trimmed.length - 1).trim();
         }
@@ -283,10 +301,9 @@ export function parseResponse(text: string): { emotion: string; content: string;
         return trimmed;
       })
       .filter(s => s.length > 0);
-    content = content.replace(suggestionsMatch[0], '').trim();
   }
 
-  // Suffix/bracket tag safety cleaning from main output
+  // Double safety trim and cleaning of any remaining or partial tags
   content = content.replace(/\[CORRECTION:\s*.*?\]/is, '');
   content = content.replace(/\[SUGGESTIONS:\s*.*?\]/is, '');
   content = content.replace(/\[CORRECTION:\s*.*$/is, '');

@@ -58,8 +58,8 @@ app.post(["/api/chat", "/api/chat/"], async (req, res) => {
       (character.name || "").toLowerCase().includes('ielts') ||
       (character.name || "").toLowerCase().includes('toeic');
 
-    const shouldCorrection = character.enableSpellingCorrection || isLanguageTeacher;
-    const shouldSuggestions = character.enableSuggestions || isLanguageTeacher;
+    const shouldCorrection = character.enableSpellingCorrection !== false;
+    const shouldSuggestions = character.enableSuggestions !== false;
 
     let languageInstruction = "";
     if (shouldCorrection || shouldSuggestions) {
