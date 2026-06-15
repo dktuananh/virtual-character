@@ -61,6 +61,8 @@
     "retry": "Retry",
     "correction": "Grammar Correction",
     "suggestions": "Suggestions",
+    "enable_correction": "Spelling & Grammar Correction",
+    "enable_suggestions": "Conversation Suggestions",
     "offline_mode": "Offline Mode - AI requires internet",
     "voice_setting": "Character Voice",
     "translation_settings": "Translation Settings",

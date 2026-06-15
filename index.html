@@ -4,6 +4,44 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Virtual Character AI</title>
+    <script>
+      // Immediately clear and bypass any active service worker interceptors to fix PWA 404/offline caching bugs on APIs
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          var unregisterPromise = Promise.resolve();
+          var hadSW = registrations && registrations.length > 0;
+          if (hadSW) {
+            registrations.forEach(function(registration) {
+              unregisterPromise = unregisterPromise.then(function() {
+                return registration.unregister();
+              });
+            });
+          }
+
+          var cachePromise = Promise.resolve();
+          if ('caches' in window) {
+            cachePromise = caches.keys().then(function(keys) {
+              if (keys && keys.length > 0) {
+                return Promise.all(keys.map(function(key) {
+                  return caches.delete(key);
+                }));
+              }
+            });
+          }
+
+          Promise.all([unregisterPromise, cachePromise]).then(function() {
+            if (navigator.serviceWorker.controller || hadSW) {
+              console.log('Force reloading to bypass stale service worker interception...');
+              setTimeout(function() {
+                window.location.reload();
+              }, 300);
+            }
+          });
+        }).catch(function(err) {
+          console.error('Service worker cleanup failed:', err);
+        });
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

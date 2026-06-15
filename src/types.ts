@@ -1,4 +1,4 @@
-export type AIProvider = 'google' | 'openai';
+export type AIProvider = 'google' | 'openai' | 'nvidia';
 
 export interface GeminiKeyEntry {
   id: string;
@@ -18,6 +18,7 @@ export interface AIConfig {
   translationProvider?: 'ai' | 'free';
   geminiKeysPool?: GeminiKeyEntry[];
   useRotation?: boolean;
+  nvidiaBaseUrl?: string;
 }
 
 export interface Character {
@@ -32,6 +33,8 @@ export interface Character {
   status: 'Operational' | 'Learning' | 'Standby';
   voiceId?: string;
   createdAt?: number;
+  enableSpellingCorrection?: boolean;
+  enableSuggestions?: boolean;
 }
 
 export interface Message {

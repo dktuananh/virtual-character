@@ -165,7 +165,14 @@ export default function App() {
   const [aiConfig, setAiConfig] = useState<AIConfig>(() => {
     try {
       const saved = localStorage.getItem('muse_ai_config');
-      return saved ? JSON.parse(saved) : DEFAULT_AI_CONFIG;
+      if (saved) {
+        const parsed = JSON.parse(saved) as AIConfig;
+        if (parsed.nvidiaBaseUrl === 'https://integrate.api.nvidia.com') {
+          parsed.nvidiaBaseUrl = 'https://integrate.api.nvidia.com/v1';
+        }
+        return parsed;
+      }
+      return DEFAULT_AI_CONFIG;
     } catch (e) {
       console.error("Failed to parse AI config from localStorage", e);
       return DEFAULT_AI_CONFIG;
@@ -191,6 +198,30 @@ export default function App() {
   });
   const [isSelectingCharacter, setIsSelectingCharacter] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [serverConfig, setServerConfig] = useState<{
+    nvidiaConfigured: boolean;
+    geminiConfigured: boolean;
+    openaiConfigured: boolean;
+    nvidiaModel: string;
+    nvidiaBaseUrl: string;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then(res => res.json())
+      .then(data => {
+        setServerConfig(data);
+        setAiConfig(prev => {
+          const updated = { ...prev };
+          if (data.nvidiaConfigured && prev.provider === 'nvidia' && !prev.apiKey) {
+            updated.nvidiaBaseUrl = data.nvidiaBaseUrl;
+            updated.modelId = data.nvidiaModel;
+          }
+          return updated;
+        });
+      })
+      .catch(err => console.error("Failed to fetch server config:", err));
+  }, []);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -276,7 +307,9 @@ export default function App() {
     avatarUrl: '',
     status: 'Operational',
     version: 'v1.0',
-    voiceId: ''
+    voiceId: '',
+    enableSpellingCorrection: false,
+    enableSuggestions: false
   });
 
   const handleCreateCharacter = () => {
@@ -312,7 +345,9 @@ export default function App() {
       avatarUrl: '',
       status: 'Operational',
       version: 'v1.0',
-      voiceId: ''
+      voiceId: '',
+      enableSpellingCorrection: false,
+      enableSuggestions: false
     });
   };
 
@@ -327,7 +362,9 @@ export default function App() {
       avatarUrl: char.avatarUrl,
       status: char.status,
       version: char.version,
-      voiceId: char.voiceId
+      voiceId: char.voiceId,
+      enableSpellingCorrection: char.enableSpellingCorrection || false,
+      enableSuggestions: char.enableSuggestions || false
     });
     setView('creator');
   };
@@ -725,6 +762,59 @@ export default function App() {
                           onChange={v => setNewChar({...newChar, voiceId: v})} 
                         />
                       </div>
+
+                      <div className="pt-4 space-y-3">
+                        <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest ml-1">Tính năng hỗ trợ (AI Features)</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <button 
+                            type="button"
+                            onClick={() => setNewChar({...newChar, enableSpellingCorrection: !newChar.enableSpellingCorrection})}
+                            className={cn(
+                              "flex items-center gap-3 p-4 rounded-xl border text-left transition-all",
+                              newChar.enableSpellingCorrection 
+                                ? "bg-primary/10 border-primary text-primary" 
+                                : "bg-surface-container border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high"
+                            )}
+                          >
+                            <div className={cn(
+                              "w-5 h-5 rounded flex items-center justify-center border transition-all",
+                              newChar.enableSpellingCorrection 
+                                ? "border-primary bg-primary text-background animate-scale-up" 
+                                : "border-outline-variant"
+                            )}>
+                              {newChar.enableSpellingCorrection && <Check size={14} className="stroke-[3]" />}
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-on-surface">{t('common.enable_correction')}</p>
+                              <p className="text-[10px] opacity-70">Sửa lỗi chính tả & ngữ pháp sau mỗi tin nhắn</p>
+                            </div>
+                          </button>
+
+                          <button 
+                            type="button"
+                            onClick={() => setNewChar({...newChar, enableSuggestions: !newChar.enableSuggestions})}
+                            className={cn(
+                              "flex items-center gap-3 p-4 rounded-xl border text-left transition-all",
+                              newChar.enableSuggestions 
+                                ? "bg-secondary/10 border-secondary text-secondary" 
+                                : "bg-surface-container border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high"
+                            )}
+                          >
+                            <div className={cn(
+                              "w-5 h-5 rounded flex items-center justify-center border transition-all",
+                              newChar.enableSuggestions 
+                                ? "border-secondary bg-secondary text-background animate-scale-up" 
+                                : "border-outline-variant"
+                            )}>
+                              {newChar.enableSuggestions && <Check size={14} className="stroke-[3]" />}
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-on-surface">{t('common.enable_suggestions')}</p>
+                              <p className="text-[10px] opacity-70">Gợi ý các câu trả lời tiếp theo để tiếp tục hội thoại</p>
+                            </div>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </section>
 
@@ -805,6 +895,7 @@ export default function App() {
                 chatHistory={chatHistory}
                 setChatHistory={setChatHistory}
                 setConfirmModal={setConfirmModal}
+                serverConfig={serverConfig}
               />
             )}
 
@@ -859,7 +950,8 @@ function SettingsView({
   onUpdateAvatar, 
   chatHistory, 
   setChatHistory,
-  setConfirmModal
+  setConfirmModal,
+  serverConfig
 }: { 
   theme: 'dark' | 'light' | 'system', 
   setTheme: (t: 'dark' | 'light' | 'system') => void, 
@@ -869,7 +961,14 @@ function SettingsView({
   onUpdateAvatar: (url: string) => void, 
   chatHistory: Record<string, Message[]>, 
   setChatHistory: (h: Record<string, Message[]>) => void,
-  setConfirmModal: (modal: any) => void
+  setConfirmModal: (modal: any) => void,
+  serverConfig: {
+    nvidiaConfigured: boolean;
+    geminiConfigured: boolean;
+    openaiConfigured: boolean;
+    nvidiaModel: string;
+    nvidiaBaseUrl: string;
+  } | null
 }) {
   const { t, i18n } = useTranslation();
   const [tempConfig, setTempConfig] = useState<AIConfig>(aiConfig);
@@ -1058,10 +1157,35 @@ function SettingsView({
             <select 
               className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/50 transition-all appearance-none cursor-pointer" 
               value={tempConfig.provider}
-              onChange={e => setTempConfig({...tempConfig, provider: e.target.value as AIProvider})}
+              onChange={e => {
+                const prov = e.target.value as AIProvider;
+                let defaultModel = tempConfig.modelId;
+                let defaultKey = tempConfig.apiKey;
+                let defaultBaseUrl = tempConfig.nvidiaBaseUrl || '';
+                
+                if (prov === 'nvidia') {
+                  defaultModel = serverConfig?.nvidiaModel || 'meta/llama-3.1-8b-instruct';
+                  defaultKey = serverConfig?.nvidiaConfigured ? '' : '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';
+                  defaultBaseUrl = serverConfig?.nvidiaBaseUrl || 'https://integrate.api.nvidia.com/v1';
+                } else if (prov === 'google') {
+                  defaultModel = 'gemini-3-flash-preview';
+                  defaultKey = process.env.GEMINI_API_KEY || '';
+                } else if (prov === 'openai') {
+                  defaultModel = 'gpt-4o';
+                  defaultKey = '';
+                }
+                setTempConfig({
+                  ...tempConfig,
+                  provider: prov,
+                  modelId: defaultModel,
+                  apiKey: defaultKey,
+                  nvidiaBaseUrl: defaultBaseUrl
+                });
+              }}
             >
               <option value="google" className="bg-surface-container-highest">Google Gemini</option>
               <option value="openai" className="bg-surface-container-highest">OpenAI</option>
+              <option value="nvidia" className="bg-surface-container-highest">NVIDIA (Meta Llama)</option>
             </select>
           </div>
           <div className="space-y-2">
@@ -1083,7 +1207,32 @@ function SettingsView({
             value={tempConfig.apiKey}
             onChange={e => setTempConfig({...tempConfig, apiKey: e.target.value})}
           />
+          {tempConfig.provider === 'nvidia' && (
+            <p className="text-[10px] text-on-surface-variant italic px-1">
+              {serverConfig?.nvidiaConfigured ? (
+                <span className="text-emerald-400 font-bold">
+                  * Hệ thống phát hiện biến môi trường NVIDIA_API_KEY đang hoạt động trên máy chủ! Bạn có thể để trống ô này để dùng tự động.
+                </span>
+              ) : (
+                <span>
+                  * Nếu bạn đã cấu hình biến môi trường <code className="bg-surface-container px-1 py-0.5 rounded text-primary">NVIDIA_API_KEY</code>, bạn có thể để trống ô này.
+                </span>
+              )}
+            </p>
+          )}
         </div>
+
+        {tempConfig.provider === 'nvidia' && (
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest ml-1">NVIDIA Base URL</label>
+            <input 
+              className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/50 transition-all"
+              placeholder="e.g. https://integrate.api.nvidia.com/v1"
+              value={tempConfig.nvidiaBaseUrl || ''}
+              onChange={e => setTempConfig({...tempConfig, nvidiaBaseUrl: e.target.value})}
+            />
+          </div>
+        )}
 
         {tempConfig.provider === 'google' && (
           <div className="pt-4 border-t border-outline-variant/10 space-y-4">
@@ -1455,6 +1604,7 @@ function ChatView({
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Selection translation states
   const [selectionInfo, setSelectionInfo] = useState<{
@@ -1867,41 +2017,66 @@ function ChatView({
                             </p>
                           </div>
                         )}
-                        
-                        {msg.correction && (
-                          <div className="mt-3 pt-3 border-t border-white/5 space-y-2">
-                            <div className="flex items-center gap-2 text-[10px] font-bold text-primary uppercase tracking-wider">
-                              <CheckCircle2 size={12} />
-                              {isEnglishResponse(msg.content) ? 'Grammar Correction' : 'Sửa lỗi Ngữ pháp'}
-                            </div>
-                            <p className="text-xs text-on-surface-variant bg-primary/5 p-2 rounded-lg italic border-l-2 border-primary">
-                              {msg.correction}
-                            </p>
-                          </div>
-                        )}
-
-                        {msg.suggestions && msg.suggestions.length > 0 && (
-                          <div className="mt-3 pt-3 border-t border-white/5 space-y-2">
-                            <div className="flex items-center gap-2 text-[10px] font-bold text-secondary uppercase tracking-wider">
-                              <Sparkles size={12} />
-                              {isEnglishResponse(msg.content) ? 'Suggestions' : 'Gợi ý trả lời'}
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {msg.suggestions.map((suggestion, sIdx) => (
-                                <button 
-                                  key={sIdx}
-                                  onClick={() => setInput(suggestion)}
-                                  className="text-[10px] bg-secondary/10 hover:bg-secondary/20 text-secondary px-3 py-1.5 rounded-full transition-all border border-secondary/20"
-                                >
-                                  {suggestion}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
+
+                  {msg.role === 'model' && msg.correction && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="w-full mt-2 self-stretch"
+                    >
+                      <div className="flex flex-col gap-2 p-4 rounded-2xl bg-amber-500/10 text-on-surface border border-amber-500/25 shadow-md text-xs relative overflow-hidden backdrop-blur-[2px]">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-amber-500" />
+                        <div className="flex items-center gap-2 font-bold text-amber-500 uppercase tracking-widest text-[10px] select-none">
+                          <CheckCircle2 size={13} className="stroke-[2.5]" />
+                          <span>{isEnglishResponse(msg.content) ? 'Spelling & Grammar Correction' : 'Chỉnh sửa lỗi chính tả & ngữ pháp'}</span>
+                        </div>
+                        <div className="text-on-surface-variant leading-relaxed pl-1">
+                          <span className="opacity-75">{isEnglishResponse(msg.content) ? 'Correction:' : 'Sửa lại cho đúng:'}</span> <span className="text-amber-200 font-medium bg-amber-500/15 px-2 py-1 rounded-lg border border-amber-500/10 italic select-all inline-block mt-1">"{msg.correction}"</span>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {msg.role === 'model' && msg.suggestions && msg.suggestions.length > 0 && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="w-full mt-3 self-stretch flex flex-col gap-2.5"
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-secondary uppercase tracking-widest text-[10px] pl-1.5 select-none">
+                        <Sparkles size={12} className="stroke-[2.5] text-secondary animate-pulse" />
+                        <span>{isEnglishResponse(msg.content) ? 'Suggested Replies' : 'Gợi ý câu trả lời tiếp theo'}</span>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        {msg.suggestions.map((suggestion, sIdx) => (
+                          <button 
+                            key={sIdx}
+                            onClick={() => {
+                              setInput(suggestion);
+                              if (inputRef.current) {
+                                inputRef.current.focus();
+                                // Auto-resize textarea
+                                setTimeout(() => {
+                                  if (inputRef.current) {
+                                    inputRef.current.style.height = 'auto';
+                                    const maxHeight = window.innerWidth < 640 ? 128 : 192;
+                                    inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, maxHeight)}px`;
+                                  }
+                                }, 50);
+                              }
+                            }}
+                            className="group relative flex items-center text-xs bg-secondary/10 hover:bg-secondary/20 hover:scale-[1.01] hover:border-secondary/65 text-on-surface hover:text-white px-4 py-3 rounded-2xl transition-all border border-secondary/20 hover:shadow-md active:scale-95 text-left w-full leading-relaxed font-medium"
+                          >
+                            <span className="text-secondary font-extrabold mr-2.5 text-[10px] bg-secondary/20 px-2 py-0.5 rounded-lg select-none">#{sIdx + 1}</span>
+                            <span className="flex-1 text-on-surface/90 group-hover:text-white transition-colors">{suggestion}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
                 </div>
               </div>
             ))}
@@ -1957,6 +2132,7 @@ function ChatView({
             </div>
             
             <textarea 
+              ref={inputRef}
               className="flex-1 bg-transparent border-none text-on-surface placeholder:text-on-surface-variant/50 focus:ring-0 text-sm font-medium py-2 resize-none max-h-32 sm:max-h-48 min-h-[40px] custom-scrollbar" 
               placeholder={t('common.speak_with', { name: character.name })}
               value={input}

@@ -61,6 +61,8 @@
     "retry": "Thử lại",
     "correction": "Sửa lỗi Ngữ pháp",
     "suggestions": "Gợi ý trả lời",
+    "enable_correction": "Sửa lỗi chính tả",
+    "enable_suggestions": "Câu gợi ý",
     "offline_mode": "Chế độ Ngoại tuyến - AI cần internet",
     "voice_setting": "Giọng nói Nhân vật",
     "translation_settings": "Thiết lập Dịch thuật",
