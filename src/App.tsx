@@ -913,6 +913,10 @@ export default function App() {
               <ChatView 
                 key={`chat-${activeCharacter.id}`}
                 character={activeCharacter} 
+                onUpdateCharacter={(updatedChar) => {
+                  setCharacters(prev => prev.map(c => c.id === updatedChar.id ? updatedChar : c));
+                  setActiveCharacter(updatedChar);
+                }}
                 history={chatHistory[activeCharacter.id] || []} 
                 onUpdateHistory={(newHistory) => setChatHistory(prev => ({ ...prev, [activeCharacter.id]: newHistory }))}
                 isSidebarCollapsed={isSidebarCollapsed}
@@ -1587,6 +1591,7 @@ function CharacterCard({ character, onChat, onEdit, onDelete }: { character: Cha
 
 function ChatView({ 
   character, 
+  onUpdateCharacter,
   history, 
   onUpdateHistory, 
   isSidebarCollapsed, 
@@ -1596,6 +1601,7 @@ function ChatView({
   setConfirmModal
 }: { 
   character: Character, 
+  onUpdateCharacter: (c: Character) => void,
   history: Message[], 
   onUpdateHistory: (h: Message[]) => void, 
   isSidebarCollapsed: boolean, 
@@ -1898,6 +1904,62 @@ function ChatView({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 relative overflow-hidden">
+      {/* Pinned Top Bar Controls */}
+      <div className="px-4 py-3 sm:px-6 bg-surface-container-highest/60 backdrop-blur-md border-b border-outline-variant/10 flex items-center justify-between z-20 flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl overflow-hidden border border-outline-variant/20 shadow-sm">
+            <img src={character.avatarUrl || undefined} alt={character.name} className="w-full h-full object-cover" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-on-surface leading-none mb-1">{character.name}</h3>
+            <span className="text-[9px] text-secondary/80 font-black tracking-wider uppercase">{character.status || 'Active'}</span>
+          </div>
+        </div>
+
+        {/* Dynamic Controls */}
+        <div className="flex items-center gap-1.5 sm:gap-3">
+          {/* Spelling Correction */}
+          <button
+            onClick={() => {
+              onUpdateCharacter({
+                ...character,
+                enableSpellingCorrection: character.enableSpellingCorrection === false ? true : false
+              });
+            }}
+            className={cn(
+              "flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all border cursor-pointer",
+              character.enableSpellingCorrection !== false
+                ? "bg-primary/10 border-primary/20 text-primary"
+                : "bg-surface-container-low border-outline-variant/20 text-on-surface-variant/50"
+            )}
+            title={character.enableSpellingCorrection !== false ? "Sửa lỗi: Đang bật" : "Sửa lỗi: Đang tắt"}
+          >
+            {character.enableSpellingCorrection !== false && <Check size={11} />}
+            <span>Sửa lỗi</span>
+          </button>
+
+          {/* Suggestions */}
+          <button
+            onClick={() => {
+              onUpdateCharacter({
+                ...character,
+                enableSuggestions: character.enableSuggestions === false ? true : false
+              });
+            }}
+            className={cn(
+              "flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all border cursor-pointer",
+              character.enableSuggestions !== false
+                ? "bg-secondary/10 border-secondary/20 text-secondary"
+                : "bg-surface-container-low border-outline-variant/20 text-on-surface-variant/50"
+            )}
+            title={character.enableSuggestions !== false ? "Gợi ý: Đang bật" : "Gợi ý: Đang tắt"}
+          >
+            {character.enableSuggestions !== false && <Check size={11} />}
+            <span>Gợi ý</span>
+          </button>
+        </div>
+      </div>
+
       <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar space-y-6 sm:space-y-8 px-3 sm:px-4 py-4 sm:py-8">
         <div className="max-w-4xl mx-auto w-full">
           {history.length === 0 && !error && (
