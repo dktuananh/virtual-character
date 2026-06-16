@@ -30,16 +30,12 @@ app.get(["/api/health", "/api/health/"], (req, res) => {
 
 // API config status check
 app.get(["/api/config", "/api/config/"], (req, res) => {
-  const getEnvConfig = (val: string | undefined, fallback: string) => {
-    const trimmed = (val || "").trim();
-    return trimmed !== "" ? trimmed : fallback;
-  };
   res.json({
     nvidiaConfigured: !!(process.env.NVIDIA_API_KEY || "").trim(),
     geminiConfigured: !!(process.env.GEMINI_API_KEY || "").trim(),
     openaiConfigured: !!(process.env.OPENAI_API_KEY || "").trim(),
-    nvidiaModel: getEnvConfig(process.env.NVIDIA_MODEL, "meta/llama-3.1-8b-instruct"),
-    nvidiaBaseUrl: getEnvConfig(process.env.NVIDIA_BASE_URL, "https://integrate.api.nvidia.com/v1")
+    nvidiaModel: "meta/llama-3.1-8b-instruct",
+    nvidiaBaseUrl: "https://integrate.api.nvidia.com/v1"
   });
 });
 
@@ -200,7 +196,7 @@ Keep the bracketed action/emotion vivid, immersive, and active. Never break char
     } else if (currentConfig.provider === 'nvidia') {
       const apiKey = (currentConfig.apiKey || "").trim() || (process.env.NVIDIA_API_KEY || "").trim();
       if (!apiKey) {
-        res.write(`[ERROR: NVIDIA API Key is missing. Please configure it in your Settings or set NVIDIA_API_KEY as an env variable.]`);
+        res.write(`[ERROR: LỖI API KEY: Không tìm thấy khóa NVIDIA API Key. Vui lòng thêm/cài đặt biến môi trường NVIDIA_API_KEY hoặc nhập khóa trong phần Cài đặt.]`);
         return res.end();
       }
 
@@ -228,11 +224,7 @@ Example:
 
 Keep the bracketed action/emotion vivid, immersive, and active. Never break character or refer to yourself as an AI.`;
 
-      const getEnvConfig = (val: string | undefined, fallback: string) => {
-        const trimmed = (val || "").trim();
-        return trimmed !== "" ? trimmed : fallback;
-      };
-      let rawBaseUrl = (currentConfig.nvidiaBaseUrl || "").trim() || getEnvConfig(process.env.NVIDIA_BASE_URL, "https://integrate.api.nvidia.com/v1");
+      let rawBaseUrl = (currentConfig.nvidiaBaseUrl || "").trim() || "https://integrate.api.nvidia.com/v1";
       if (rawBaseUrl.endsWith("/")) {
         rawBaseUrl = rawBaseUrl.slice(0, -1);
       }
@@ -257,7 +249,7 @@ Keep the bracketed action/emotion vivid, immersive, and active. Never break char
       ];
 
       try {
-        const selectedModel = (currentConfig.modelId || "").trim() || getEnvConfig(process.env.NVIDIA_MODEL, "meta/llama-3.1-8b-instruct");
+        const selectedModel = (currentConfig.modelId || "").trim() || "meta/llama-3.1-8b-instruct";
         const stream = await openai.chat.completions.create({
           model: selectedModel,
           messages,
@@ -271,7 +263,25 @@ Keep the bracketed action/emotion vivid, immersive, and active. Never break char
           }
         }
       } catch (error: any) {
-        res.write(`[ERROR: ${error.message || "Request to NVIDIA failed."}]`);
+        console.error("NVIDIA Stream Chat Error:", error);
+        let errorMsg = "Đã xảy ra lỗi không xác định khi yêu cầu phản hồi từ NVIDIA.";
+        
+        const errMsgStr = (error.message || "").toLowerCase();
+        const errStatus = error.status || error.statusCode;
+
+        if (errStatus === 401 || errStatus === 403 || errMsgStr.includes("api key") || errMsgStr.includes("unauthorized") || errMsgStr.includes("invalid key")) {
+          errorMsg = "LỖI API KEY: Khóa NVIDIA API Key không hợp lệ hoặc đã bị vô hiệu hóa. Vui lòng kiểm tra lại cấu hình.";
+        } else if (errStatus === 404 || errMsgStr.includes("model not found") || errMsgStr.includes("unknown model") || errMsgStr.includes("model_not_found")) {
+          errorMsg = `LỖI MÔ HÌNH: Không thể tìm thấy mô hình được chỉ định (${(currentConfig.modelId || "").trim() || "meta/llama-3.1-8b-instruct"}). Vui lòng kiểm tra lại tên mô hình.`;
+        } else if (error.code === 'ENOTFOUND' || error.syscall === 'getaddrinfo' || errMsgStr.includes("fetch failed") || errMsgStr.includes("network error") || errMsgStr.includes("econnrefused")) {
+          errorMsg = `LỖI KẾT NỐI: Không thể kết nối tới máy chủ NVIDIA AI tại Endpoint (${rawBaseUrl}). Vui lòng kiểm tra lại đường truyền mạng hoặc Nvidia Base URL.`;
+        } else if (errStatus >= 500) {
+          errorMsg = `LỖI MÁY CHỦ NVIDIA (HTTP ${errStatus}): Máy chủ NVIDIA đang gặp sự cố hoặc quá tải tạm thời. Vui lòng thử lại sau.`;
+        } else {
+          errorMsg = `LỖI CHI TIẾT: ${error.message || "Không có phản hồi từ máy chủ NVIDIA AI."}`;
+        }
+
+        res.write(`[ERROR: ${errorMsg}]`);
       }
     }
 
@@ -306,13 +316,11 @@ app.post(["/api/translate", "/api/translate/"], async (req, res) => {
       return res.json({ translatedText: response.text || "" });
     } else if (currentConfig.provider === 'nvidia') {
       const apiKey = (currentConfig.apiKey || "").trim() || (process.env.NVIDIA_API_KEY || "").trim();
-      if (!apiKey) throw new Error("NVIDIA API Key is missing. Please configure it in your Settings or set NVIDIA_API_KEY as an env variable.");
+      if (!apiKey) {
+        throw new Error("LỖI API KEY: Không có NVIDIA API Key. Vui lòng thêm biến môi trường NVIDIA_API_KEY hoặc điền Khóa trong Settings.");
+      }
       
-      const getEnvConfig = (val: string | undefined, fallback: string) => {
-        const trimmed = (val || "").trim();
-        return trimmed !== "" ? trimmed : fallback;
-      };
-      let rawBaseUrl = (currentConfig.nvidiaBaseUrl || "").trim() || getEnvConfig(process.env.NVIDIA_BASE_URL, "https://integrate.api.nvidia.com/v1");
+      let rawBaseUrl = (currentConfig.nvidiaBaseUrl || "").trim() || "https://integrate.api.nvidia.com/v1";
       if (rawBaseUrl.endsWith("/")) {
         rawBaseUrl = rawBaseUrl.slice(0, -1);
       }
@@ -324,12 +332,32 @@ app.post(["/api/translate", "/api/translate/"], async (req, res) => {
         apiKey: apiKey, 
         baseURL: rawBaseUrl
       });
-      const selectedModel = (currentConfig.modelId || "").trim() || getEnvConfig(process.env.NVIDIA_MODEL, "meta/llama-3.1-8b-instruct");
-      const response = await openai.chat.completions.create({
-        model: selectedModel,
-        messages: [{ role: 'user', content: prompt }],
-      });
-      return res.json({ translatedText: response.choices[0]?.message?.content || "" });
+      const selectedModel = (currentConfig.modelId || "").trim() || "meta/llama-3.1-8b-instruct";
+      
+      try {
+        const response = await openai.chat.completions.create({
+          model: selectedModel,
+          messages: [{ role: 'user', content: prompt }],
+        });
+        return res.json({ translatedText: response.choices[0]?.message?.content || "" });
+      } catch (error: any) {
+        console.error("NVIDIA Translate Error:", error);
+        let errorMsg = "Không thể dịch phản hồi thông qua dịch vụ NVIDIA AI.";
+        
+        const errMsgStr = (error.message || "").toLowerCase();
+        const errStatus = error.status || error.statusCode;
+
+        if (errStatus === 401 || errStatus === 403 || errMsgStr.includes("api key") || errMsgStr.includes("unauthorized") || errMsgStr.includes("invalid key")) {
+          errorMsg = "LỖI API KEY: Khóa API Key không hợp lệ khi gọi dịch vụ dịch NVIDIA.";
+        } else if (errStatus === 404 || errMsgStr.includes("model not found") || errMsgStr.includes("unknown model")) {
+          errorMsg = `LỖI MÔ HÌNH: Không tìm thấy mô hình (${selectedModel}).`;
+        } else if (error.code === 'ENOTFOUND' || error.syscall === 'getaddrinfo' || errMsgStr.includes("fetch failed") || errMsgStr.includes("network error")) {
+          errorMsg = `LỖI KẾT NỐI: Lỗi kết nối tới máy chủ dịch NVIDIA tại endpoint (${rawBaseUrl}).`;
+        } else {
+          errorMsg = `LỖI NVIDIA: ${error.message || "Dịch vụ dịch NVIDIA gặp sự cố."}`;
+        }
+        throw new Error(errorMsg);
+      }
     } else {
       const apiKey = process.env.OPENAI_API_KEY || currentConfig.apiKey;
       if (!apiKey) throw new Error("API Key is missing.");
