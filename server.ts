@@ -30,12 +30,16 @@ app.get(["/api/health", "/api/health/"], (req, res) => {
 
 // API config status check
 app.get(["/api/config", "/api/config/"], (req, res) => {
+  const getEnvConfig = (val: string | undefined, fallback: string) => {
+    const trimmed = (val || "").trim();
+    return trimmed !== "" ? trimmed : fallback;
+  };
   res.json({
-    nvidiaConfigured: !!process.env.NVIDIA_API_KEY,
-    geminiConfigured: !!process.env.GEMINI_API_KEY,
-    openaiConfigured: !!process.env.OPENAI_API_KEY,
-    nvidiaModel: process.env.NVIDIA_MODEL || "meta/llama-3.1-8b-instruct",
-    nvidiaBaseUrl: process.env.NVIDIA_BASE_URL || "https://integrate.api.nvidia.com/v1"
+    nvidiaConfigured: !!(process.env.NVIDIA_API_KEY || "").trim(),
+    geminiConfigured: !!(process.env.GEMINI_API_KEY || "").trim(),
+    openaiConfigured: !!(process.env.OPENAI_API_KEY || "").trim(),
+    nvidiaModel: getEnvConfig(process.env.NVIDIA_MODEL, "meta/llama-3.1-8b-instruct"),
+    nvidiaBaseUrl: getEnvConfig(process.env.NVIDIA_BASE_URL, "https://integrate.api.nvidia.com/v1")
   });
 });
 
@@ -194,9 +198,9 @@ Keep the bracketed action/emotion vivid, immersive, and active. Never break char
         res.write(`[ERROR: ${error.message || "Request to OpenAI failed."}]`);
       }
     } else if (currentConfig.provider === 'nvidia') {
-      const apiKey = process.env.NVIDIA_API_KEY || currentConfig.apiKey;
+      const apiKey = (process.env.NVIDIA_API_KEY || "").trim();
       if (!apiKey) {
-        res.write(`[ERROR: NVIDIA API Key is missing. Please set NVIDIA_API_KEY as an env variable on Vercel or configure it in Settings.]`);
+        res.write(`[ERROR: NVIDIA_API_KEY is missing in your .env configuration. Please set NVIDIA_API_KEY in the environmental variables.]`);
         return res.end();
       }
 
@@ -224,7 +228,11 @@ Example:
 
 Keep the bracketed action/emotion vivid, immersive, and active. Never break character or refer to yourself as an AI.`;
 
-      let rawBaseUrl = process.env.NVIDIA_BASE_URL || currentConfig.nvidiaBaseUrl || "https://integrate.api.nvidia.com/v1";
+      const getEnvConfig = (val: string | undefined, fallback: string) => {
+        const trimmed = (val || "").trim();
+        return trimmed !== "" ? trimmed : fallback;
+      };
+      let rawBaseUrl = getEnvConfig(process.env.NVIDIA_BASE_URL, "https://integrate.api.nvidia.com/v1");
       if (rawBaseUrl.endsWith("/")) {
         rawBaseUrl = rawBaseUrl.slice(0, -1);
       }
@@ -249,8 +257,9 @@ Keep the bracketed action/emotion vivid, immersive, and active. Never break char
       ];
 
       try {
+        const selectedModel = getEnvConfig(process.env.NVIDIA_MODEL, "meta/llama-3.1-8b-instruct");
         const stream = await openai.chat.completions.create({
-          model: process.env.NVIDIA_MODEL || currentConfig.modelId || "meta/llama-3.1-8b-instruct",
+          model: selectedModel,
           messages,
           stream: true,
         });
@@ -296,9 +305,14 @@ app.post(["/api/translate", "/api/translate/"], async (req, res) => {
       });
       return res.json({ translatedText: response.text || "" });
     } else if (currentConfig.provider === 'nvidia') {
-      const apiKey = process.env.NVIDIA_API_KEY || currentConfig.apiKey;
-      if (!apiKey) throw new Error("NVIDIA API Key is missing. Please set NVIDIA_API_KEY as an env variable on Vercel.");
-      let rawBaseUrl = process.env.NVIDIA_BASE_URL || currentConfig.nvidiaBaseUrl || "https://integrate.api.nvidia.com/v1";
+      const apiKey = (process.env.NVIDIA_API_KEY || "").trim();
+      if (!apiKey) throw new Error("NVIDIA_API_KEY is missing in your .env configuration. Please set NVIDIA_API_KEY in environmental variables.");
+      
+      const getEnvConfig = (val: string | undefined, fallback: string) => {
+        const trimmed = (val || "").trim();
+        return trimmed !== "" ? trimmed : fallback;
+      };
+      let rawBaseUrl = getEnvConfig(process.env.NVIDIA_BASE_URL, "https://integrate.api.nvidia.com/v1");
       if (rawBaseUrl.endsWith("/")) {
         rawBaseUrl = rawBaseUrl.slice(0, -1);
       }
@@ -310,8 +324,9 @@ app.post(["/api/translate", "/api/translate/"], async (req, res) => {
         apiKey: apiKey, 
         baseURL: rawBaseUrl
       });
+      const selectedModel = getEnvConfig(process.env.NVIDIA_MODEL, "meta/llama-3.1-8b-instruct");
       const response = await openai.chat.completions.create({
-        model: process.env.NVIDIA_MODEL || currentConfig.modelId || "meta/llama-3.1-8b-instruct",
+        model: selectedModel,
         messages: [{ role: 'user', content: prompt }],
       });
       return res.json({ translatedText: response.choices[0]?.message?.content || "" });
