@@ -1201,13 +1201,9 @@ function SettingsView({
           <div className="space-y-2">
             <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest ml-1">{t('common.model_name')}</label>
             <input 
-              disabled={tempConfig.provider === 'nvidia'}
-              className={cn(
-                "w-full border-none rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/50 transition-all",
-                tempConfig.provider === 'nvidia' ? "bg-surface-container text-on-surface/50 cursor-not-allowed opacity-80" : "bg-surface-container-highest"
-              )}
-              placeholder="e.g. gemini-1.5-flash or gpt-4o"
-              value={tempConfig.provider === 'nvidia' ? (serverConfig?.nvidiaModel || 'meta/llama-3.1-8b-instruct') : tempConfig.modelId}
+              className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/50 transition-all"
+              placeholder={tempConfig.provider === 'nvidia' ? "e.g. meta/llama-3.1-8b-instruct (Để trống nếu dùng cấu hình .env)" : "e.g. gemini-1.5-flash or gpt-4o"}
+              value={tempConfig.modelId}
               onChange={e => setTempConfig({...tempConfig, modelId: e.target.value})}
             />
           </div>
@@ -1216,24 +1212,20 @@ function SettingsView({
           <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest ml-1">{t('common.api_key')}</label>
           <input 
             type="password"
-            disabled={tempConfig.provider === 'nvidia'}
-            className={cn(
-              "w-full border-none rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/50 transition-all",
-              tempConfig.provider === 'nvidia' ? "bg-surface-container text-on-surface/40 cursor-not-allowed opacity-80" : "bg-surface-container-highest"
-            )}
-            placeholder={tempConfig.provider === 'nvidia' ? "NVIDIA_API_KEY read strictly from .env..." : "Enter your API Key..."}
-            value={tempConfig.provider === 'nvidia' ? '' : tempConfig.apiKey}
+            className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/50 transition-all"
+            placeholder={tempConfig.provider === 'nvidia' ? "Điền NVIDIA API Key (Để trống nếu dùng cấu hình .env)..." : "Enter your API Key..."}
+            value={tempConfig.apiKey}
             onChange={e => setTempConfig({...tempConfig, apiKey: e.target.value})}
           />
           {tempConfig.provider === 'nvidia' && (
             <p className="text-[10px] text-on-surface-variant italic px-1">
               {serverConfig?.nvidiaConfigured ? (
                 <span className="text-emerald-400 font-bold">
-                  * Hệ thống chỉ sử dụng NVIDIA_API_KEY từ cấu hình .env (đang hoạt động)!
+                  * Có phát hiện NVIDIA_API_KEY trong cấu hình .env máy chủ (Có thể để trống trường này).
                 </span>
               ) : (
                 <span className="text-amber-400 font-bold">
-                  * Hệ thống chỉ sử dụng NVIDIA_API_KEY từ cấu hình .env (chưa cấu hình trên máy chủ hoặc rỗng)!
+                  * Chưa cài đặt NVIDIA_API_KEY ở .env máy chủ. Bạn có thể tự điền khoá vào đây để sử dụng.
                 </span>
               )}
             </p>
@@ -1241,13 +1233,13 @@ function SettingsView({
         </div>
 
         {tempConfig.provider === 'nvidia' && (
-          <div className="space-y-2 opacity-80">
-            <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest ml-1">NVIDIA Base URL (Đọc từ .env)</label>
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest ml-1">NVIDIA Base URL</label>
             <input 
-              disabled
-              className="w-full bg-surface-container border-none rounded-xl px-4 py-3 text-sm text-on-surface/50 cursor-not-allowed"
-              placeholder="e.g. https://integrate.api.nvidia.com/v1"
-              value={serverConfig?.nvidiaBaseUrl || 'https://integrate.api.nvidia.com/v1'}
+              className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/50 transition-all"
+              placeholder="e.g. https://integrate.api.nvidia.com/v1 (Để trống nếu dùng cấu hình .env)"
+              value={tempConfig.nvidiaBaseUrl || ''}
+              onChange={e => setTempConfig({...tempConfig, nvidiaBaseUrl: e.target.value})}
             />
           </div>
         )}

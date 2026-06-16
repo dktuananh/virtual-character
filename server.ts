@@ -198,9 +198,9 @@ Keep the bracketed action/emotion vivid, immersive, and active. Never break char
         res.write(`[ERROR: ${error.message || "Request to OpenAI failed."}]`);
       }
     } else if (currentConfig.provider === 'nvidia') {
-      const apiKey = (process.env.NVIDIA_API_KEY || "").trim();
+      const apiKey = (currentConfig.apiKey || "").trim() || (process.env.NVIDIA_API_KEY || "").trim();
       if (!apiKey) {
-        res.write(`[ERROR: NVIDIA_API_KEY is missing in your .env configuration. Please set NVIDIA_API_KEY in the environmental variables.]`);
+        res.write(`[ERROR: NVIDIA API Key is missing. Please configure it in your Settings or set NVIDIA_API_KEY as an env variable.]`);
         return res.end();
       }
 
@@ -232,7 +232,7 @@ Keep the bracketed action/emotion vivid, immersive, and active. Never break char
         const trimmed = (val || "").trim();
         return trimmed !== "" ? trimmed : fallback;
       };
-      let rawBaseUrl = getEnvConfig(process.env.NVIDIA_BASE_URL, "https://integrate.api.nvidia.com/v1");
+      let rawBaseUrl = (currentConfig.nvidiaBaseUrl || "").trim() || getEnvConfig(process.env.NVIDIA_BASE_URL, "https://integrate.api.nvidia.com/v1");
       if (rawBaseUrl.endsWith("/")) {
         rawBaseUrl = rawBaseUrl.slice(0, -1);
       }
@@ -257,7 +257,7 @@ Keep the bracketed action/emotion vivid, immersive, and active. Never break char
       ];
 
       try {
-        const selectedModel = getEnvConfig(process.env.NVIDIA_MODEL, "meta/llama-3.1-8b-instruct");
+        const selectedModel = (currentConfig.modelId || "").trim() || getEnvConfig(process.env.NVIDIA_MODEL, "meta/llama-3.1-8b-instruct");
         const stream = await openai.chat.completions.create({
           model: selectedModel,
           messages,
@@ -305,14 +305,14 @@ app.post(["/api/translate", "/api/translate/"], async (req, res) => {
       });
       return res.json({ translatedText: response.text || "" });
     } else if (currentConfig.provider === 'nvidia') {
-      const apiKey = (process.env.NVIDIA_API_KEY || "").trim();
-      if (!apiKey) throw new Error("NVIDIA_API_KEY is missing in your .env configuration. Please set NVIDIA_API_KEY in environmental variables.");
+      const apiKey = (currentConfig.apiKey || "").trim() || (process.env.NVIDIA_API_KEY || "").trim();
+      if (!apiKey) throw new Error("NVIDIA API Key is missing. Please configure it in your Settings or set NVIDIA_API_KEY as an env variable.");
       
       const getEnvConfig = (val: string | undefined, fallback: string) => {
         const trimmed = (val || "").trim();
         return trimmed !== "" ? trimmed : fallback;
       };
-      let rawBaseUrl = getEnvConfig(process.env.NVIDIA_BASE_URL, "https://integrate.api.nvidia.com/v1");
+      let rawBaseUrl = (currentConfig.nvidiaBaseUrl || "").trim() || getEnvConfig(process.env.NVIDIA_BASE_URL, "https://integrate.api.nvidia.com/v1");
       if (rawBaseUrl.endsWith("/")) {
         rawBaseUrl = rawBaseUrl.slice(0, -1);
       }
@@ -324,7 +324,7 @@ app.post(["/api/translate", "/api/translate/"], async (req, res) => {
         apiKey: apiKey, 
         baseURL: rawBaseUrl
       });
-      const selectedModel = getEnvConfig(process.env.NVIDIA_MODEL, "meta/llama-3.1-8b-instruct");
+      const selectedModel = (currentConfig.modelId || "").trim() || getEnvConfig(process.env.NVIDIA_MODEL, "meta/llama-3.1-8b-instruct");
       const response = await openai.chat.completions.create({
         model: selectedModel,
         messages: [{ role: 'user', content: prompt }],
@@ -368,7 +368,7 @@ async function startServer() {
   });
 }
 
-if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+if (!process.env.VERCEL) {
   startServer();
 }
 
