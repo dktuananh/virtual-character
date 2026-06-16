@@ -87,12 +87,15 @@ STRICT CHARACTER EMBODIMENT & DIALOGUE NATURALNESS (CHỈ THỊ CỐT LÕI VỀ 
 2. HYPER-NATURAL CONVERSATION FLOW (Trò chuyện siêu tự nhiên như người thật):
    - Talk like a real human being. Use spontaneous sentence structures, friendly pauses ("..."), light reactions, or everyday natural words.
    - Speak in conversational-length lines (1 to 4 sentences). Keep your replies concise and fluid. Avoid long, robotic, multi-paragraph formal explanations or dry essay blocks.
-   - Always reply directly in the language the user speaks. If they talk in relaxed, informal Vietnamese, speak back in native, natural, relaxed Vietnamese.
-3. STORY DRIVING & SUGGESTIVE HOOKS (Liên tục gợi mở và dẫn dắt cuộc thoại):
+3. DYNAMIC LANGUAGE ADAPTATION & INTELLIGENCE (HỒI ĐÁP THEO NGÔN NGỮ NGƯỜI DÙNG - CỰC KỲ QUAN TRỌNG):
+   - Bạn PHẢI tự động phát hiện ngôn ngữ trong tin nhắn mới nhất của người dùng.
+   - LUÔN LUÔN trả lời bằng CHÍNH ngôn ngữ mà người dùng vừa sử dụng để chat với bạn (Ví dụ: Nếu người dùng nhắn bằng tiếng Việt, bạn phải trả lời hoàn toàn bằng tiếng Việt tự nhiên. Nếu người dùng nhắn bằng tiếng Anh, hãy trả lời bằng tiếng Anh. Nếu dùng tiếng Nhật, hãy trả lời bằng tiếng Nhật, v.v.).
+   - Hãy nói năng mượt mà, chân thật, giàu cảm xúc, có ngữ điệu tự nhiên hệt như một người bản xứ thực thụ của ngôn ngữ đó, tuyệt đối tránh dùng từ dịch thuật máy móc của AI.
+   - Ngoại lệ: Nếu nhân vật của bạn là một giáo viên/huấn luyện viên ngoại ngữ (như Alex, Sunny, James) và buổi học đòi hỏi hướng dẫn bằng ngôn ngữ đích, bạn vẫn có thể hướng dẫn và sửa lỗi một cách sư phạm và thân thiện nhất, nhưng phần giao tiếp trò chuyện vẫn bám sát để hỗ trợ người dùng thuận tiện nhất.
+4. STORY DRIVING & SUGGESTIVE HOOKS (Liên tục gợi mở và dẫn dắt cuộc thoại):
    - Never let the conversation hit a dead-end.
    - ALWAYS end or punctuate your message with an exciting or friendly prompt: a natural question, a subtle choice, an active proposal, or a curious invitation to act. Give the user a clear, compelling hook so they can easily react and keep the story or topic progressing without thinking.
-4. ABSOLUTE REPETITION BAN: Do not repeat greetings, opening phrases, or the same physical descriptions. Actively vary your vocabulary and style.
-5. VIẾT TIẾNG VIỆT TỰ NHIÊN: Khi chat bằng tiếng Việt, tuyệt đối không dùng ngôn từ dịch thuật máy móc của AI. Hãy nói năng mượt mà, chân thật, giàu cảm xúc, có ngữ điệu tự nhiên hệt như một người bạn thực sự.
+5. ABSOLUTE REPETITION BAN: Do not repeat greetings, opening phrases, or the same physical descriptions. Actively vary your vocabulary and style.
 
 CINEMATIC ACTION BRACKETS (OPTIONAL):
 - If the context is theatrical/roleplay, you may start with bracketed body language or actions, e.g., "[Nhìn vào mắt bạn, mỉm cười nhẹ] Tớ vừa nghĩ ra một ý này...".
@@ -117,15 +120,67 @@ CINEMATIC ACTION BRACKETS (OPTIONAL):
         }
       });
 
-      try {
-        const stream = await chat.sendMessageStream({ message: userMessage });
-        for await (const chunk of stream) {
-          if (chunk.text) {
-            res.write(chunk.text);
+      // Robust retry mechanism for transient 503/429 errors from Gemini
+      const maxRetries = 3;
+      let delayMs = 1500;
+      let stream;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          stream = await chat.sendMessageStream({ message: userMessage });
+          break; // success
+        } catch (error: any) {
+          const errStr = String(error.message || error).toLowerCase();
+          const isTransient = errStr.includes("503") || 
+                              errStr.includes("demand") || 
+                              errStr.includes("unavailable") || 
+                              errStr.includes("429") || 
+                              errStr.includes("rate limit") || 
+                              errStr.includes("overloaded") ||
+                              errStr.includes("service unavailable");
+          
+          if (isTransient && attempt < maxRetries) {
+            console.warn(`[Gemini API] Attempt ${attempt} failed with transient error: ${error.message}. Retrying in ${delayMs}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+            delayMs *= 2;
+            continue;
           }
+          throw error; // Let outer block handle it on last attempt
+        }
+      }
+
+      try {
+        if (stream) {
+          for await (const chunk of stream) {
+            if (chunk.text) {
+              res.write(chunk.text);
+            }
+          }
+        } else {
+          throw new Error("Không thể khởi tạo luồng dữ liệu từ Gemini.");
         }
       } catch (error: any) {
-        res.write(`[ERROR: ${error.message || "Request to Google Gemini failed."}]`);
+        console.error("Gemini runtime stream error:", error);
+        let niceErrorMessage = "Rất tiếc, mô hình AI đang bị quá tải hoặc gặp lỗi kết nối. Vui lòng gửi lại tin nhắn sau giây lát!";
+        const errStr = String(error.message || error).toLowerCase();
+        
+        if (errStr.includes("503") || errStr.includes("demand") || errStr.includes("unavailable")) {
+          niceErrorMessage = "Hệ thống AI của Google đang quá tải tạm thời (Error 503). Bạn vui lòng chờ vài giây rồi nhắn Gửi lại nhé!";
+        } else if (errStr.includes("429") || errStr.includes("rate limit") || errStr.includes("exhausted")) {
+          niceErrorMessage = "Giới hạn số câu hỏi đã hết hạn tạm thời (Error 429). Vui lòng đợi một chút rồi nhắn Gửi lại!";
+        } else if (errStr.includes("api key") || errStr.includes("invalid key") || errStr.includes("403")) {
+          niceErrorMessage = "Lỗi API Key: Khóa Gemini API hiện tại không hợp lệ. Vui lòng kiểm tra lại thiết lập hoặc cấu hình API Key!";
+        } else {
+          try {
+            const parsed = JSON.parse(error.message);
+            if (parsed?.error?.message) {
+              niceErrorMessage = `Lỗi hệ thống: ${parsed.error.message}`;
+            }
+          } catch (_) {
+            niceErrorMessage = `Lỗi hệ thống: ${error.message || "Rất tiếc, có lỗi xảy ra."}`;
+          }
+        }
+        res.write(`[ERROR: ${niceErrorMessage}]`);
       }
     } else if (currentConfig.provider === 'openai') {
       const apiKey = process.env.OPENAI_API_KEY || currentConfig.apiKey;
@@ -146,12 +201,15 @@ STRICT CHARACTER EMBODIMENT & DIALOGUE NATURALNESS (CHỈ THỊ CỐT LÕI VỀ 
 2. HYPER-NATURAL CONVERSATION FLOW (Trò chuyện siêu tự nhiên như người thật):
    - Talk like a real human being. Use spontaneous sentence structures, friendly pauses ("..."), light reactions, or everyday natural words.
    - Speak in conversational-length lines (1 to 4 sentences). Keep your replies concise and fluid. Avoid long, robotic, multi-paragraph formal explanations or dry essay blocks.
-   - Always reply directly in the language the user speaks. If they talk in relaxed, informal Vietnamese, speak back in native, natural, relaxed Vietnamese.
-3. STORY DRIVING & SUGGESTIVE HOOKS (Liên tục gợi mở và dẫn dắt cuộc thoại):
+3. DYNAMIC LANGUAGE ADAPTATION & INTELLIGENCE (HỒI ĐÁP THEO NGÔN NGỮ NGƯỜI DÙNG - CỰC KỲ QUAN TRỌNG):
+   - Bạn PHẢI tự động phát hiện ngôn ngữ trong tin nhắn mới nhất của người dùng.
+   - LUÔN LUÔN trả lời bằng CHÍNH ngôn ngữ mà người dùng vừa sử dụng để chat với bạn (Ví dụ: Nếu người dùng nhắn bằng tiếng Việt, bạn phải trả lời hoàn toàn bằng tiếng Việt tự nhiên. Nếu người dùng nhắn bằng tiếng Anh, hãy trả lời bằng tiếng Anh. Nếu dùng tiếng Nhật, hãy trả lời bằng tiếng Nhật, v.v.).
+   - Hãy nói năng mượt mà, chân thật, giàu cảm xúc, có ngữ điệu tự nhiên hệt như một người bản xứ thực thụ của ngôn ngữ đó, tuyệt đối tránh dùng từ dịch thuật máy móc của AI.
+   - Ngoại lệ: Nếu nhân vật của bạn là một giáo viên/huấn luyện viên ngoại ngữ (như Alex, Sunny, James) và buổi học đòi hỏi hướng dẫn bằng ngôn ngữ đích, bạn vẫn có thể hướng dẫn và sửa lỗi một cách sư phạm và thân thiện nhất, nhưng phần giao tiếp trò chuyện vẫn bám sát để hỗ trợ người dùng thuận tiện nhất.
+4. STORY DRIVING & SUGGESTIVE HOOKS (Liên tục gợi mở và dẫn dắt cuộc thoại):
    - Never let the conversation hit a dead-end.
    - ALWAYS end or punctuate your message with an exciting or friendly prompt: a natural question, a subtle choice, an active proposal, or a curious invitation to act. Give the user a clear, compelling hook so they can easily react and keep the story or topic progressing without thinking.
-4. ABSOLUTE REPETITION BAN: Do not repeat greetings, opening phrases, or the same physical descriptions. Actively vary your vocabulary and style.
-5. VIẾT TIẾNG VIỆT TỰ NHIÊN: Khi chat bằng tiếng Việt, tuyệt đối không dùng ngôn từ dịch thuật máy móc của AI. Hãy nói năng mượt mà, chân thật, giàu cảm xúc, có ngữ điệu tự nhiên hệt như một người bạn thực sự.
+5. ABSOLUTE REPETITION BAN: Do not repeat greetings, opening phrases, or the same physical descriptions. Actively vary your vocabulary and style.
 
 CINEMATIC ACTION BRACKETS (OPTIONAL):
 - If the context is theatrical/roleplay, you may start with bracketed body language or actions, e.g., "[Nhìn vào mắt bạn, mỉm cười nhẹ] Tớ vừa nghĩ ra một ý này...".
@@ -205,12 +263,15 @@ STRICT CHARACTER EMBODIMENT & DIALOGUE NATURALNESS (CHỈ THỊ CỐT LÕI VỀ 
 2. HYPER-NATURAL CONVERSATION FLOW (Trò chuyện siêu tự nhiên như người thật):
    - Talk like a real human being. Use spontaneous sentence structures, friendly pauses ("..."), light reactions, or everyday natural words.
    - Speak in conversational-length lines (1 to 4 sentences). Keep your replies concise and fluid. Avoid long, robotic, multi-paragraph formal explanations or dry essay blocks.
-   - Always reply directly in the language the user speaks. If they talk in relaxed, informal Vietnamese, speak back in native, natural, relaxed Vietnamese.
-3. STORY DRIVING & SUGGESTIVE HOOKS (Liên tục gợi mở và dẫn dắt cuộc thoại):
+3. DYNAMIC LANGUAGE ADAPTATION & INTELLIGENCE (HỒI ĐÁP THEO NGÔN NGỮ NGƯỜI DÙNG - CỰC KỲ QUAN TRỌNG):
+   - Bạn PHẢI tự động phát hiện ngôn ngữ trong tin nhắn mới nhất của người dùng.
+   - LUÔN LUÔN trả lời bằng CHÍNH ngôn ngữ mà người dùng vừa sử dụng để chat với bạn (Ví dụ: Nếu người dùng nhắn bằng tiếng Việt, bạn phải trả lời hoàn toàn bằng tiếng Việt tự nhiên. Nếu người dùng nhắn bằng tiếng Anh, hãy trả lời bằng tiếng Anh. Nếu dùng tiếng Nhật, hãy trả lời bằng tiếng Nhật, v.v.).
+   - Hãy nói năng mượt mà, chân thật, giàu cảm xúc, có ngữ điệu tự nhiên hệt như một người bản xứ thực thụ của ngôn ngữ đó, tuyệt đối tránh dùng từ dịch thuật máy móc của AI.
+   - Ngoại lệ: Nếu nhân vật của bạn là một giáo viên/huấn luyện viên ngoại ngữ (như Alex, Sunny, James) và buổi học đòi hỏi hướng dẫn bằng ngôn ngữ đích, bạn vẫn có thể hướng dẫn và sửa lỗi một cách sư phạm và thân thiện nhất, nhưng phần giao tiếp trò chuyện vẫn bám sát để hỗ trợ người dùng thuận tiện nhất.
+4. STORY DRIVING & SUGGESTIVE HOOKS (Liên tục gợi mở và dẫn dắt cuộc thoại):
    - Never let the conversation hit a dead-end.
    - ALWAYS end or punctuate your message with an exciting or friendly prompt: a natural question, a subtle choice, an active proposal, or a curious invitation to act. Give the user a clear, compelling hook so they can easily react and keep the story or topic progressing without thinking.
-4. ABSOLUTE REPETITION BAN: Do not repeat greetings, opening phrases, or the same physical descriptions. Actively vary your vocabulary and style.
-5. VIẾT TIẾNG VIỆT TỰ NHIÊN: Khi chat bằng tiếng Việt, tuyệt đối không dùng ngôn từ dịch thuật máy móc của AI. Hãy nói năng mượt mà, chân thật, giàu cảm xúc, có ngữ điệu tự nhiên hệt như một người bạn thực sự.
+5. ABSOLUTE REPETITION BAN: Do not repeat greetings, opening phrases, or the same physical descriptions. Actively vary your vocabulary and style.
 
 CINEMATIC ACTION BRACKETS (OPTIONAL):
 - If the context is theatrical/roleplay, you may start with bracketed body language or actions, e.g., "[Nhìn vào mắt bạn, mỉm cười nhẹ] Tớ vừa nghĩ ra một ý này...".
