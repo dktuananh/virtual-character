@@ -1178,7 +1178,7 @@ function SettingsView({
                 let defaultBaseUrl = tempConfig.nvidiaBaseUrl || '';
                 
                 if (prov === 'nvidia') {
-                  defaultModel = serverConfig?.nvidiaModel || 'meta/llama-3.1-8b-instruct';
+                  defaultModel = 'meta/llama-3.3-70b-instruct';
                   defaultKey = '';
                   defaultBaseUrl = serverConfig?.nvidiaBaseUrl || 'https://integrate.api.nvidia.com/v1';
                 } else if (prov === 'google') {
@@ -1204,12 +1204,55 @@ function SettingsView({
           </div>
           <div className="space-y-2">
             <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest ml-1">{t('common.model_name')}</label>
-            <input 
-              className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/50 transition-all"
-              placeholder={tempConfig.provider === 'nvidia' ? "e.g. meta/llama-3.1-8b-instruct (Để trống nếu dùng cấu hình .env)" : "e.g. gemini-1.5-flash or gpt-4o"}
-              value={tempConfig.modelId}
-              onChange={e => setTempConfig({...tempConfig, modelId: e.target.value})}
-            />
+            {tempConfig.provider === 'nvidia' ? (
+              <div className="space-y-2">
+                <select
+                  className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/50 transition-all appearance-none cursor-pointer"
+                  value={
+                    ['meta/llama-3.3-70b-instruct', 'nvidia/llama-3.1-nemotron-70b-instruct', 'meta/llama-3.1-405b-instruct', 'meta/llama-3.1-70b-instruct', 'meta/llama-3.1-8b-instruct', 'mistralai/mistral-large-2-instruct'].includes(tempConfig.modelId)
+                      ? tempConfig.modelId
+                      : 'custom'
+                  }
+                  onChange={e => {
+                    const selected = e.target.value;
+                    if (selected !== 'custom') {
+                      setTempConfig({ ...tempConfig, modelId: selected });
+                    } else {
+                      setTempConfig({ ...tempConfig, modelId: 'meta/llama-3.3-70b-instruct' });
+                    }
+                  }}
+                >
+                  <option value="meta/llama-3.3-70b-instruct">Llama 3.3 70B Instruct (Mới nhất & khuyên dùng 🌟)</option>
+                  <option value="nvidia/llama-3.1-nemotron-70b-instruct">Nemotron 70B Instruct (Đối thoại siêu tự nhiên)</option>
+                  <option value="meta/llama-3.1-405b-instruct">Llama 3.1 405B Instruct (Sức mạnh tối đa)</option>
+                  <option value="meta/llama-3.1-70b-instruct">Llama 3.1 70B Instruct (Cân bằng tốt)</option>
+                  <option value="meta/llama-3.1-8b-instruct">Llama 3.1 8B Instruct (Cực nhanh & nhẹ)</option>
+                  <option value="mistralai/mistral-large-2-instruct">Mistral Large 2 (Đa ngôn ngữ mượt)</option>
+                  <option value="custom">✍️ Tùy chọn (Nhập mã model bất kỳ...)</option>
+                </select>
+                
+                {(!['meta/llama-3.3-70b-instruct', 'nvidia/llama-3.1-nemotron-70b-instruct', 'meta/llama-3.1-405b-instruct', 'meta/llama-3.1-70b-instruct', 'meta/llama-3.1-8b-instruct', 'mistralai/mistral-large-2-instruct'].includes(tempConfig.modelId)) && (
+                  <div className="relative animate-fade-in mt-1">
+                    <input 
+                      className="w-full bg-surface-container-highest border border-primary/20 rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/50 transition-all font-mono"
+                      placeholder="e.g. meta/llama-3.3-70b-instruct"
+                      value={tempConfig.modelId}
+                      onChange={e => setTempConfig({...tempConfig, modelId: e.target.value})}
+                    />
+                    <span className="absolute right-3 top-3 text-[10px] text-primary/70 uppercase tracking-wider font-extrabold">
+                      Tên model tùy chỉnh
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <input 
+                className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/50 transition-all"
+                placeholder="e.g. gemini-1.5-flash or gpt-4o"
+                value={tempConfig.modelId}
+                onChange={e => setTempConfig({...tempConfig, modelId: e.target.value})}
+              />
+            )}
           </div>
         </div>
         <div className="space-y-2">
