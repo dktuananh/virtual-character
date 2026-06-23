@@ -19,6 +19,12 @@ export interface AIConfig {
   geminiKeysPool?: GeminiKeyEntry[];
   useRotation?: boolean;
   nvidiaBaseUrl?: string;
+  googleApiKey?: string;
+  openaiApiKey?: string;
+  nvidiaApiKey?: string;
+  googleModelId?: string;
+  openaiModelId?: string;
+  nvidiaModelId?: string;
 }
 
 export interface Character {

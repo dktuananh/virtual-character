@@ -61,9 +61,24 @@ app.post(["/api/chat", "/api/chat/"], async (req, res) => {
 
     let languageInstruction = "";
     if (shouldCorrection && shouldSuggestions) {
-      languageInstruction = `\nAI ASSISTANCE FEATURES:\n1. GRAMMAR & SPELLING CORRECTION (SỬA LỖI CHÍNH TẢ): If the user's last message has ANY grammar or spelling mistakes, you MUST provide a corrected version of their input. Format your corrected version at the very end of your response like this: [CORRECTION: (corrected user's text here with typos and grammar corrected)].\n2. RESPONSE SUGGESTIONS (GỢI Ý CÂU HỎI/TRẢ LỜI): You MUST provide 2-3 short suggested questions or replies written from the USER's role/perspective to continue the scenario/story. These suggestions must be written from the USER's point of view so they can click and send them next (e.g. 'Can we walk over there?' or 'Yes, let's do search'). Format your suggestions at the very end of your response like this: [SUGGESTIONS: (suggestion 1) | (suggestion 2) | (suggestion 3)].\nCombine both active features at the absolute end of your response on newlines.\n`;
+      languageInstruction = `\nAI ASSISTANCE FEATURES:
+1. GRAMMAR & SPELLING CORRECTION (SỬA LỖI CHÍNH TẢ):
+   - ONLY provide a correction if the user's last message has a GENUINE, SIGNIFICANT grammar mistake, typo, or spelling issue that affects comprehension or correctness.
+   - DO NOT be pedantic! If the user's message is grammatically fine but just lacks perfect capitalization/punctuation (e.g. starting with lowercase letters like "i'm" or "yes", or missing a period/question mark at the end), DO NOT output a correction.
+   - DO NOT correct the user if their message matches one of your previous suggested response templates.
+   - If there is NO significant mistake, do NOT output any correction block.
+   - Format: If and only if a correction is genuinely needed, put it at the very end of your response like this: [CORRECTION: (only the completely corrected, natural sentence here, without annotations like "->" or explanations)].
+2. RESPONSE SUGGESTIONS (GỢI Ý CÂU HỎI/TRẢ LỜI): You MUST provide 2-3 short suggested questions or replies written from the USER's role/perspective to continue the scenario/story. These suggestions must be written from the USER's point of view so they can click and send them next (e.g. 'Can we walk over there?' or 'Yes, let's do search'). Format your suggestions at the very end of your response like this: [SUGGESTIONS: (suggestion 1) | (suggestion 2) | (suggestion 3)].
+Combine both active features at the absolute end of your response on newlines.\n`;
     } else if (shouldCorrection) {
-      languageInstruction = `\nAI ASSISTANCE FEATURES:\n1. GRAMMAR & SPELLING CORRECTION (SỬA LỖI CHÍNH TẢ): If the user's last message has ANY grammar or spelling mistakes, you MUST provide a corrected version of their input. Format your corrected version at the very end of your response like this: [CORRECTION: (corrected user's text here with typos and grammar corrected)].\nEnsure you never output any suggestions prefix or suggestions tags.\n`;
+      languageInstruction = `\nAI ASSISTANCE FEATURES:
+1. GRAMMAR & SPELLING CORRECTION (SỬA LỖI CHÍNH TẢ):
+   - ONLY provide a correction if the user's last message has a GENUINE, SIGNIFICANT grammar mistake, typo, or spelling issue that affects comprehension or correctness.
+   - DO NOT be pedantic! If the user's message is grammatically fine but just lacks perfect capitalization/punctuation (e.g. starting with lowercase letters like "i'm" or "yes", or missing a period/question mark at the end), DO NOT output a correction.
+   - DO NOT correct the user if their message matches one of your previous suggested response templates.
+   - If there is NO significant mistake, do NOT output any correction block.
+   - Format: If and only if a correction is genuinely needed, put it at the very end of your response like this: [CORRECTION: (only the completely corrected, natural sentence here, without annotations like "->" or explanations)].
+Ensure you never output any suggestions prefix or suggestions tags.\n`;
     } else if (shouldSuggestions) {
       languageInstruction = `\nAI ASSISTANCE FEATURES:\n2. RESPONSE SUGGESTIONS (GỢI Ý CÂU HỎI/TRẢ LỜI): You MUST provide 2-3 short suggested questions or replies written from the USER's role/perspective to continue the scenario/story. These suggestions must be written from the USER's point of view so they can click and send them next (e.g. 'Can we walk over there?' or 'Yes, let's do search'). Format your suggestions at the very end of your response like this: [SUGGESTIONS: (suggestion 1) | (suggestion 2) | (suggestion 3)].\nEnsure you never output any corrections prefix or corrections tags.\n`;
     }

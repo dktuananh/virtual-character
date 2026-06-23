@@ -146,10 +146,45 @@ const INITIAL_CHARACTERS: Character[] = [
   }
 ];
 
+// Safe localStorage helper to prevent crashing in third-party sandboxed iframe environments
+const safeLocalStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      console.warn(`LocalStorage blocked or unavailable for key "${key}":`, e);
+      return null;
+    }
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      console.warn(`LocalStorage failed to write for key "${key}":`, e);
+    }
+  },
+  removeItem: (key: string): void => {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      console.warn(`LocalStorage failed to remove for key "${key}":`, e);
+    }
+  },
+  clear: (): void => {
+    try {
+      localStorage.clear();
+    } catch (e) {
+      console.warn("LocalStorage failed to clear:", e);
+    }
+  }
+};
+
 const DEFAULT_AI_CONFIG: AIConfig = {
   provider: 'google',
   modelId: 'gemini-3-flash-preview',
   apiKey: process.env.GEMINI_API_KEY || '',
+  googleApiKey: process.env.GEMINI_API_KEY || '',
+  googleModelId: 'gemini-3-flash-preview',
   translationLanguage: 'vi',
   translationProvider: 'free',
   geminiKeysPool: [],
@@ -161,7 +196,7 @@ export default function App() {
   const [view, setView] = useState<'dashboard' | 'creator' | 'chat' | 'settings'>('dashboard');
   const [characters, setCharacters] = useState<Character[]>(() => {
     try {
-      const saved = localStorage.getItem('muse_characters');
+      const saved = safeLocalStorage.getItem('muse_characters');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -174,12 +209,34 @@ export default function App() {
   });
   const [aiConfig, setAiConfig] = useState<AIConfig>(() => {
     try {
-      const saved = localStorage.getItem('muse_ai_config');
+      const saved = safeLocalStorage.getItem('muse_ai_config');
       if (saved) {
         const parsed = JSON.parse(saved) as AIConfig;
         if (parsed.nvidiaBaseUrl === 'https://integrate.api.nvidia.com') {
           parsed.nvidiaBaseUrl = 'https://integrate.api.nvidia.com/v1';
         }
+        
+        // Migrate previously saved keys and models to provider-specific fields
+        if (parsed.provider === 'google' && !parsed.googleApiKey && parsed.apiKey) {
+          parsed.googleApiKey = parsed.apiKey;
+        }
+        if (parsed.provider === 'nvidia' && !parsed.nvidiaApiKey && parsed.apiKey) {
+          parsed.nvidiaApiKey = parsed.apiKey;
+        }
+        if (parsed.provider === 'openai' && !parsed.openaiApiKey && parsed.apiKey) {
+          parsed.openaiApiKey = parsed.apiKey;
+        }
+        
+        if (parsed.provider === 'google' && !parsed.googleModelId && parsed.modelId) {
+          parsed.googleModelId = parsed.modelId;
+        }
+        if (parsed.provider === 'nvidia' && !parsed.nvidiaModelId && parsed.modelId) {
+          parsed.nvidiaModelId = parsed.modelId;
+        }
+        if (parsed.provider === 'openai' && !parsed.openaiModelId && parsed.modelId) {
+          parsed.openaiModelId = parsed.modelId;
+        }
+        
         return parsed;
       }
       return DEFAULT_AI_CONFIG;
@@ -191,7 +248,7 @@ export default function App() {
   const [activeCharacter, setActiveCharacter] = useState<Character | null>(null);
   const [chatHistory, setChatHistory] = useState<Record<string, Message[]>>(() => {
     try {
-      const saved = localStorage.getItem('muse_chat_history');
+      const saved = safeLocalStorage.getItem('muse_chat_history');
       return saved ? JSON.parse(saved) : {};
     } catch (e) {
       console.error("Failed to parse chat history from localStorage", e);
@@ -204,7 +261,7 @@ export default function App() {
   const [editingCharacterId, setEditingCharacterId] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [userAvatar, setUserAvatar] = useState<string>(() => {
-    return localStorage.getItem('muse_user_avatar') || 'https://picsum.photos/seed/user/100/100';
+    return safeLocalStorage.getItem('muse_user_avatar') || 'https://picsum.photos/seed/user/100/100';
   });
   const [isSelectingCharacter, setIsSelectingCharacter] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -274,7 +331,7 @@ export default function App() {
   // Persistence
   useEffect(() => {
     try {
-      localStorage.setItem('muse_characters', JSON.stringify(characters));
+      safeLocalStorage.setItem('muse_characters', JSON.stringify(characters));
       setStorageError(null);
     } catch (e) {
       console.error('Failed to save characters to localStorage:', e);
@@ -284,7 +341,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('muse_chat_history', JSON.stringify(chatHistory));
+      safeLocalStorage.setItem('muse_chat_history', JSON.stringify(chatHistory));
       setStorageError(null);
     } catch (e) {
       console.error('Failed to save chat history to localStorage:', e);
@@ -294,7 +351,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('muse_ai_config', JSON.stringify(aiConfig));
+      safeLocalStorage.setItem('muse_ai_config', JSON.stringify(aiConfig));
     } catch (e) {
       console.error('Failed to save AI config to localStorage:', e);
     }
@@ -302,7 +359,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('muse_user_avatar', userAvatar);
+      safeLocalStorage.setItem('muse_user_avatar', userAvatar);
     } catch (e) {
       console.error('Failed to save user avatar to localStorage. It might be too large.', e);
     }
@@ -1173,27 +1230,44 @@ function SettingsView({
               value={tempConfig.provider}
               onChange={e => {
                 const prov = e.target.value as AIProvider;
-                let defaultModel = tempConfig.modelId;
-                let defaultKey = tempConfig.apiKey;
-                let defaultBaseUrl = tempConfig.nvidiaBaseUrl || '';
-                
-                if (prov === 'nvidia') {
-                  defaultModel = 'meta/llama-3.3-70b-instruct';
-                  defaultKey = '';
-                  defaultBaseUrl = serverConfig?.nvidiaBaseUrl || 'https://integrate.api.nvidia.com/v1';
-                } else if (prov === 'google') {
-                  defaultModel = 'gemini-3-flash-preview';
-                  defaultKey = process.env.GEMINI_API_KEY || '';
-                } else if (prov === 'openai') {
-                  defaultModel = 'gpt-4o';
-                  defaultKey = '';
+                const oldProv = tempConfig.provider;
+
+                // Save current provider key/model to its specific field before switching
+                const updatedConfig = { ...tempConfig };
+                if (oldProv === 'google') {
+                  updatedConfig.googleApiKey = tempConfig.apiKey;
+                  updatedConfig.googleModelId = tempConfig.modelId;
+                } else if (oldProv === 'nvidia') {
+                  updatedConfig.nvidiaApiKey = tempConfig.apiKey;
+                  updatedConfig.nvidiaModelId = tempConfig.modelId;
+                } else if (oldProv === 'openai') {
+                  updatedConfig.openaiApiKey = tempConfig.apiKey;
+                  updatedConfig.openaiModelId = tempConfig.modelId;
                 }
+
+                // Retrieve target provider key/model from its specific field or default
+                let nextKey = '';
+                let nextModel = '';
+                let nextBaseUrl = tempConfig.nvidiaBaseUrl || '';
+
+                if (prov === 'nvidia') {
+                  nextKey = updatedConfig.nvidiaApiKey !== undefined ? updatedConfig.nvidiaApiKey : '';
+                  nextModel = updatedConfig.nvidiaModelId || 'meta/llama-3.3-70b-instruct';
+                  nextBaseUrl = tempConfig.nvidiaBaseUrl || serverConfig?.nvidiaBaseUrl || 'https://integrate.api.nvidia.com/v1';
+                } else if (prov === 'google') {
+                  nextKey = updatedConfig.googleApiKey !== undefined ? updatedConfig.googleApiKey : (process.env.GEMINI_API_KEY || '');
+                  nextModel = updatedConfig.googleModelId || 'gemini-3-flash-preview';
+                } else if (prov === 'openai') {
+                  nextKey = updatedConfig.openaiApiKey !== undefined ? updatedConfig.openaiApiKey : '';
+                  nextModel = updatedConfig.openaiModelId || 'gpt-4o';
+                }
+
                 setTempConfig({
-                  ...tempConfig,
+                  ...updatedConfig,
                   provider: prov,
-                  modelId: defaultModel,
-                  apiKey: defaultKey,
-                  nvidiaBaseUrl: defaultBaseUrl
+                  modelId: nextModel,
+                  apiKey: nextKey,
+                  nvidiaBaseUrl: nextBaseUrl
                 });
               }}
             >
@@ -1215,11 +1289,13 @@ function SettingsView({
                   }
                   onChange={e => {
                     const selected = e.target.value;
+                    let targetModel = tempConfig.modelId;
                     if (selected !== 'custom') {
-                      setTempConfig({ ...tempConfig, modelId: selected });
+                      targetModel = selected;
                     } else {
-                      setTempConfig({ ...tempConfig, modelId: 'meta/llama-3.3-70b-instruct' });
+                      targetModel = 'meta/llama-3.3-70b-instruct';
                     }
+                    setTempConfig({ ...tempConfig, modelId: targetModel, nvidiaModelId: targetModel });
                   }}
                 >
                   <option value="meta/llama-3.3-70b-instruct">Llama 3.3 70B Instruct (Mới nhất & khuyên dùng 🌟)</option>
@@ -1237,7 +1313,7 @@ function SettingsView({
                       className="w-full bg-surface-container-highest border border-primary/20 rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/50 transition-all font-mono"
                       placeholder="e.g. meta/llama-3.3-70b-instruct"
                       value={tempConfig.modelId}
-                      onChange={e => setTempConfig({...tempConfig, modelId: e.target.value})}
+                      onChange={e => setTempConfig({...tempConfig, modelId: e.target.value, nvidiaModelId: e.target.value})}
                     />
                     <span className="absolute right-3 top-3 text-[10px] text-primary/70 uppercase tracking-wider font-extrabold">
                       Tên model tùy chỉnh
@@ -1250,7 +1326,16 @@ function SettingsView({
                 className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/50 transition-all"
                 placeholder="e.g. gemini-1.5-flash or gpt-4o"
                 value={tempConfig.modelId}
-                onChange={e => setTempConfig({...tempConfig, modelId: e.target.value})}
+                onChange={e => {
+                  const val = e.target.value;
+                  const updated: Partial<AIConfig> = { modelId: val };
+                  if (tempConfig.provider === 'google') {
+                    updated.googleModelId = val;
+                  } else if (tempConfig.provider === 'openai') {
+                    updated.openaiModelId = val;
+                  }
+                  setTempConfig({ ...tempConfig, ...updated });
+                }}
               />
             )}
           </div>
@@ -1262,7 +1347,18 @@ function SettingsView({
             className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-primary/50 transition-all"
             placeholder={tempConfig.provider === 'nvidia' ? "Điền NVIDIA API Key (Để trống nếu dùng cấu hình .env)..." : "Enter your API Key..."}
             value={tempConfig.apiKey}
-            onChange={e => setTempConfig({...tempConfig, apiKey: e.target.value})}
+            onChange={e => {
+              const val = e.target.value;
+              const updated: Partial<AIConfig> = { apiKey: val };
+              if (tempConfig.provider === 'google') {
+                updated.googleApiKey = val;
+              } else if (tempConfig.provider === 'nvidia') {
+                updated.nvidiaApiKey = val;
+              } else if (tempConfig.provider === 'openai') {
+                updated.openaiApiKey = val;
+              }
+              setTempConfig({ ...tempConfig, ...updated });
+            }}
           />
           {tempConfig.provider === 'nvidia' && (
             <p className="text-[10px] text-on-surface-variant italic px-1">
@@ -1528,7 +1624,7 @@ function SettingsView({
                   title: t('common.clear_history'),
                   message: t('common.confirm_clear'),
                   onConfirm: () => {
-                    localStorage.removeItem('muse_chat_history');
+                    safeLocalStorage.removeItem('muse_chat_history');
                     window.location.reload();
                   }
                 });
@@ -1551,7 +1647,7 @@ function SettingsView({
                   title: t('common.reset_application'),
                   message: t('common.confirm_reset'),
                   onConfirm: () => {
-                    localStorage.clear();
+                    safeLocalStorage.clear();
                     window.location.reload();
                   }
                 });
