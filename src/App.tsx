@@ -45,6 +45,7 @@ import ReactMarkdown from 'react-markdown';
 import { Character, Message, AIConfig, AIProvider } from './types';
 import { streamChat, parseResponse, translateText, getTodayDateString } from './services/aiService';
 import { cn } from './lib/utils';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 function getBestEnglishVoice(voices: SpeechSynthesisVoice[]) {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
@@ -986,6 +987,7 @@ export default function App() {
           </AnimatePresence>
         </div>
       </main>
+      <SpeedInsights />
     </div>
   );
 }
